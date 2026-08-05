@@ -39,8 +39,9 @@ uv run python scripts/prepare_documents.py \
 uv run python scripts/prepare_documents.py
 ```
 
-명령을 실행하면 PDF의 각 페이지가 사람이 확인하는 PNG, API용 JPEG와 근거 검사용
-text로 변환되고 문서 정보가 `manifest.json`에 저장된다.
+명령을 실행하면 PDF의 각 페이지가 사람이 확인하는 PNG, API용 JPEG와 라벨 작성·점검용
+text로 변환되고 문서 정보가 `manifest.json`에 저장된다. text는 task model 입력이나
+결정적 채점에 사용하지 않는다.
 
 ```text
 local-data/aihub/prepared/

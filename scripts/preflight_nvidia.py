@@ -25,9 +25,9 @@ CATALOG_MODELS = (
     (
         "multimodal",
         "google/diffusiongemma-26b-a4b-it",
-        "35+ languages",
+        "multilingual",
     ),
-    ("multimodal", "google/gemma-4-31b-it", "140+ languages"),
+    ("multimodal", "google/gemma-4-31b-it", "35+ languages; pre-trained on 140+"),
     (
         "multimodal",
         "minimaxai/minimax-m3",

@@ -16,7 +16,7 @@ documents:
 
 provider:
   kind: recorded
-  model: recorded/nemotron-3-nano-omni-week-01
+  model: recorded/gemma-4-31b-it-week-01
 
 limits:
   max_requests: 40
