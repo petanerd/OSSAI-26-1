@@ -29,6 +29,7 @@ packages = ["src/verifiable_ai_workflow"]
 
 [tool.pytest.ini_options]
 addopts = "-q -p no:rerunfailures"
+pythonpath = ["."]
 testpaths = ["tests"]
 
 [tool.ruff]

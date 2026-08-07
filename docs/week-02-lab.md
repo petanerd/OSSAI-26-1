@@ -64,7 +64,7 @@ available now: True
 `False`면 실제 호출을 진행하지 않는다. 성공한 날짜를 수업 당일 날짜로 적는다.
 
 ```bash
-CATALOG_DATE=2026-08-06
+CATALOG_DATE=$(date +%F)
 ```
 
 한 사례 probe는 prompt를 수정한 상태에서도 실행할 수 있다. 이 결과는 연결과 출력 변화를

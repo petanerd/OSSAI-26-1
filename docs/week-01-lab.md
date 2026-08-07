@@ -64,8 +64,8 @@ uv run --locked python scripts/inspect_deterministic_scoring_case.py
 2. `model_output.raw_response`: 저장된 모델 원응답
 3. `model_output.parsed_answer`: 출력 형식 검사 뒤의 답
 4. `expected`: 기대 답·답변 보류 여부·근거 페이지
-5. `evaluation_result.scores`: 지표별 점수
-6. `evaluation_result.reasons`: 실패 이유
+5. `scoring.required_scores`: 통과 여부를 정하는 지표
+6. `scoring.failed_requirements`: 실패한 지표와 이유
 
 이 명령은 API를 호출하지 않고 저장 응답(fixture)을 다시 채점한다. 따라서 현재 모델의
 품질 측정이 아니라 시험 전용 증거(`test_only`)다.
@@ -105,8 +105,10 @@ available now: True
 `False`면 실제 API를 호출하지 않는다. 성공한 날짜를 셸 변수에 적는다. 아래 날짜는 수업
 당일 날짜로 바꾼다.
 
+사전 점검이 성공한 직후 오늘 날짜를 기록한다.
+
 ```bash
-CATALOG_DATE=2026-08-06
+CATALOG_DATE=$(date +%F)
 ```
 
 ## 5. 실제 API로 한 사례 실행

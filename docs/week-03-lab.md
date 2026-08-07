@@ -9,6 +9,10 @@ Week 1–2의 숫자·필드·근거 페이지는 Python 규칙으로 확정할 
 올바른 표현이 여러 개라 문자열 일치만으로 판정하기 어렵다. 이번 주에는 사람 두 명의 판단,
 같은 Judge의 반복 판단, 후보 순서를 바꾼 판단을 직접 비교한다.
 
+후보 A와 B는 두 API 모델의 출력이 아니라 OpenCQA의 `abstractive_answer`와
+`extractive_answer`를 섞은 답이다. 따라서 이 결과를 Gemma와 Gemini의 모델 비교로
+해석하지 않는다.
+
 ## 1. OpenCQA 30쌍 준비
 
 [OpenCQA 데이터 준비](open-cqa-data.md)를 따라 다음 파일을 만든다.
@@ -121,6 +125,22 @@ uv run --locked python scripts/calibrate_open_cqa_judge.py \
 ## 7. 30쌍 보정 기준
 
 30쌍 전체 실제 실행 결과가 있을 때만 `--pair-limit` 없이 보정한다.
+
+```bash
+uv run --locked python scripts/run_open_cqa_judge.py \
+  --live-judge \
+  --pair-limit 30 \
+  --max-requests 120 \
+  --max-input-tokens 960000 \
+  --max-output-tokens 120000 \
+  --max-cost-usd 1.20 \
+  --max-wall-seconds 10800 \
+  --catalog-verified-on "$(date +%F)" \
+  --output reports/week-03/full-30
+```
+
+한 쌍마다 두 번 반복하고 A/B·B/A를 모두 평가하므로 최대 120회 호출한다. 실행 전에
+provider quota와 비용을 다시 확인한다.
 
 ```bash
 uv run --locked python scripts/calibrate_open_cqa_judge.py \

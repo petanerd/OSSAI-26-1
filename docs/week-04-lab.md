@@ -77,7 +77,8 @@ OpenCQA 첫 번째 차트에서 변형을 만든다.
 uv run --locked python scripts/generate_image_variants.py --pair-number 1
 ```
 
-`local-data/opencqa/week-04-variants/`에서 원본과 다음 이미지를 직접 연다.
+`local-data/opencqa/week-04-variants/case.json`의 `original_image` 경로에서 원본을 열고,
+같은 폴더에서 다음 변형 이미지를 연다.
 
 - `rotate-2.png`: 2도 회전
 - `jpeg-60.jpg`: JPEG 품질 60

@@ -4,6 +4,10 @@ Week 3은 설명형 차트 질의응답 데이터인
 [OpenCQA](https://github.com/vis-nlp/OpenCQA)를 사용한다. 저장소에는 원본 이미지나 답을
 복사해 넣지 않고, 사용할 30개 ID와 원본 revision만 기록한다.
 
+후보 A와 B는 두 모델의 출력이 아니다. OpenCQA가 제공하는 `abstractive_answer`와
+`extractive_answer`를 ID hash로 섞은 것이다. 기준 답은 `abstractive_answer`다. 두 답이
+완전히 같은 사례는 제외하고, 차이의 크기가 한 split에만 몰리지 않도록 ID를 골랐다.
+
 ## 1. 원본 받기
 
 프로젝트 밖에서 공식 저장소를 받는다.
@@ -33,6 +37,9 @@ week-03-reviewer-2.csv        두 번째 사람의 독립 평가표
 
 `week-03-pairs.jsonl`에는 OpenCQA의 article, summary, OCR을 넣지 않는다. 작업 모델은 차트
 이미지와 질문만 받아야 하며, 기준 답은 모델 출력 평가에만 사용한다.
+
+기존 평가표가 있으면 준비 명령은 사람 라벨을 덮어쓰지 않는다. 현재 선택 ID와 기존 평가표
+ID가 다르면 중단되므로, 이전 평가표를 별도 보관한 뒤 다시 준비한다.
 
 ## 3. 준비 확인
 

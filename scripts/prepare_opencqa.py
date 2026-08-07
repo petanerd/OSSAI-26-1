@@ -47,6 +47,17 @@ def prepare(source_root: Path, output_root: Path = OUTPUT_ROOT) -> list[dict[str
         raise FileNotFoundError("OpenCQA annotation 또는 chart_images를 찾을 수 없습니다")
     source = json.loads(annotation.read_text(encoding="utf-8"))
 
+    expected_ids = [f"opencqa-val-{sample_id}" for sample_id in selection["sample_ids"]]
+    for reviewer in (1, 2):
+        labels_path = output_root / f"week-03-reviewer-{reviewer}.csv"
+        if labels_path.exists():
+            with labels_path.open(encoding="utf-8", newline="") as handle:
+                existing_ids = [row["pair_id"] for row in csv.DictReader(handle)]
+            if existing_ids != expected_ids:
+                raise ValueError(
+                    f"기존 평가표의 pair ID가 현재 선택과 다릅니다: {labels_path}"
+                )
+
     image_output = output_root / "images"
     image_output.mkdir(parents=True, exist_ok=True)
     pairs: list[dict[str, str]] = []
