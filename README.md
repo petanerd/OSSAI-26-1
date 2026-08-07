@@ -1,7 +1,7 @@
 # 검증 가능한 AI 작업 흐름(Workflow) 설계·평가 과정
 
 공개 문서와 차트를 읽는 하나의 멀티모달 작업 흐름(workflow)을 6주 동안 발전시키는
-교육용 프로젝트다. 현재 브랜치는 Week 1부터 Week 5까지의 실습을 담는다.
+교육용 프로젝트다. 현재 브랜치는 Week 1부터 Week 6까지의 실습을 담는다.
 
 - Week 1: PDF를 페이지 이미지로 만들고, VLM을 호출하고, 구조화된 답을 고정 규칙으로 채점한다.
 - Week 2: 모델과 지시문(prompt)을 한 번에 하나씩 바꾸며 결과를 비교한다.
@@ -33,8 +33,9 @@
 | Week 3 | `uv run --locked python scripts/inspect_judge_pair.py --number 1` | 두 설명형 답과 사람·Judge 비교 기준 |
 | Week 4 | `uv run --locked python scripts/generate_image_variants.py --pair-number 1` | 근거 보존·훼손 이미지 변형 |
 | Week 5 | `uv run --locked python scripts/inspect_agent_case.py --sample-id W5-06-idempotent-retry` | timeout 재시도와 최종 ticket 수 |
+| Week 6 | `uv run --locked pytest tests/week6` | PR·정기 실행·사람 결정 계약 |
 
-두 명령은 저장 응답(fixture)을 사용하므로 코드 학습과 회귀검사용이다. 현재 모델 품질은
+API를 호출하지 않는 명령은 코드 학습과 회귀검사용이다. 현재 모델 품질은
 실제 API로 새로 얻은 응답에서만 판단한다.
 
 ## 6주 학습 경로
@@ -121,6 +122,7 @@ DEEPEVAL_TELEMETRY_OPT_OUT=YES
 - [Week 3 실습](docs/week-03-lab.md): OpenCQA 사람 평가와 반복 LLM Judge 보정
 - [Week 4 실습](docs/week-04-lab.md): DeepEval GEPA 지시문 최적화와 이미지 견고성
 - [Week 5 실습](docs/week-05-lab.md): 도구 trace·권한·중복 변경·최종 상태 평가
+- [Week 6 실습](docs/week-06-lab.md): PR·nightly·weekly 평가와 사람의 출시 결정
 - [수업 도구·채점기·용어](docs/terms-tools-and-scoring.md): 라이브러리, 지표, 실행 용어의 뜻
 - [Week 2 비교 결과](docs/week-02-gemma-gemini-comparison-report-2026-08-05.md): 실제 결과를 읽는 예시
 - [코드 구조](docs/architecture.md): 실행 파일과 내부 코드의 연결

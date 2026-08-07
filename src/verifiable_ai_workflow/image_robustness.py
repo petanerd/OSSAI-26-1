@@ -145,6 +145,18 @@ def score_variant(
     )
 
 
+def score_original(reference_answer: str, answer: StructuredAnswer) -> VariantScore:
+    expected_numbers = set(_NUMBER.findall(reference_answer))
+    actual_numbers = set(_NUMBER.findall(answer.answer))
+    passed = not answer.abstained and expected_numbers == actual_numbers
+    return VariantScore(
+        variant_id="original",
+        grounding_status="preserved",
+        status="passed" if passed else "failed",
+        reason=f"기준 숫자={sorted(expected_numbers)}, 원본 응답 숫자={sorted(actual_numbers)}",
+    )
+
+
 def load_response_map(path: str | Path) -> dict[str, StructuredAnswer]:
     rows = [json.loads(line) for line in Path(path).read_text().splitlines() if line.strip()]
     return {

@@ -1,0 +1,73 @@
+name: Nightly live smoke
+
+on:
+  schedule:
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-live-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  smoke-3:
+    if: >-
+      ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+          && vars.LIVE_TASK_ENABLED == 'true' }}
+    runs-on: [self-hosted, linux, x64, ai-eval]
+    timeout-minutes: 30
+    environment: live-evaluation
+    env:
+      NVIDIA_NIM_API_KEY: ${{ secrets.NVIDIA_NIM_API_KEY }}
+      COURSE_DATA_ROOT: ${{ vars.COURSE_DATA_ROOT }}
+      MONITORING_ROOT: ${{ vars.MONITORING_ROOT }}
+      REPORT_ROOT: reports/week-06-nightly-${{ github.run_id }}-${{ github.run_attempt }}
+      DEEPEVAL_DISABLE_DOTENV: "1"
+      DEEPEVAL_TELEMETRY_OPT_OUT: "YES"
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --disable-pip-version-check --no-deps "uv==0.11.28"
+      - run: uv sync --locked --dev
+      - name: Check pre-provisioned AIHub data
+        run: |
+          test -n "$COURSE_DATA_ROOT"
+          test -n "$MONITORING_ROOT"
+          test -f "$COURSE_DATA_ROOT/aihub/cases.jsonl"
+          mkdir -p local-data "$MONITORING_ROOT"
+          ln -sfn "$COURSE_DATA_ROOT/aihub" local-data/aihub
+      - name: Run three live smoke cases
+        run: |
+          mkdir -p "$REPORT_ROOT"
+          uv run --no-sync python scripts/preflight_nvidia.py \
+            --config configs/nvidia-nim-gemma4.yaml
+          uv run --no-sync python scripts/run_nvidia_nim.py \
+            --config configs/nvidia-nim-gemma4.yaml \
+            --live --limit 3 \
+            --max-requests 3 --max-input-tokens 60000 --max-output-tokens 1500 \
+            --max-retries 0 --max-cost-usd 0.01 --max-wall-seconds 900 \
+            --catalog-verified-on "$(date +%F)" | tee "$REPORT_ROOT/run.log"
+          RUN_DIR="$(sed -n 's/^run directory: //p' "$REPORT_ROOT/run.log" | tail -1)"
+          uv run --no-sync python scripts/append_evaluation_history.py \
+            --profile nightly --summary "$RUN_DIR/summary.json" \
+            --calls "$RUN_DIR/provider-responses.jsonl" \
+            --history "$MONITORING_ROOT/nightly.jsonl"
+      - if: ${{ always() }}
+        run: |
+          if test -f "$MONITORING_ROOT/nightly.jsonl"; then
+            cp "$MONITORING_ROOT/nightly.jsonl" "$REPORT_ROOT/history.jsonl"
+          fi
+      - if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nightly-live-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.REPORT_ROOT }}
+          if-no-files-found: warn
+          retention-days: 14

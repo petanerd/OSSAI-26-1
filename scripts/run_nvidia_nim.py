@@ -571,6 +571,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-retries", type=_nonnegative_int, required=True)
     parser.add_argument("--limit", type=_positive_int)
     parser.add_argument("--sample-id", choices=(PROBE_SAMPLE_ID,))
+    parser.add_argument("--split", choices=("development", "validation", "challenge"))
     parser.add_argument(
         "--prompt",
         help="한 사례 probe에서만 사용하는 local-data 아래의 학습자 prompt",
@@ -586,6 +587,21 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _select_target_cases(cases, *, sample_id=None, split=None, limit=None):
+    if sample_id and (split or limit):
+        raise ValueError("--sample-id는 --split 또는 --limit와 함께 사용할 수 없습니다")
+    selected = list(cases)
+    if sample_id:
+        selected = [case for case in selected if case.sample_id == sample_id]
+    if split:
+        selected = [case for case in selected if case.split == split]
+    if limit:
+        selected = selected[:limit]
+    if not selected:
+        raise ValueError("선택 조건에 맞는 평가 사례가 없습니다")
+    return selected
+
+
 def main() -> int:
     parser = _parser()
     args = parser.parse_args()
@@ -595,7 +611,7 @@ def main() -> int:
         parser.error("--resume에는 기존 --run-id가 필요합니다")
     if not args.resume and args.run_id:
         parser.error("새 run_id는 자동 생성됩니다. --run-id는 --resume에만 사용합니다")
-    if args.resume and args.sample_id:
+    if args.resume and (args.sample_id or args.split or args.limit):
         parser.error("--resume에서는 최초 run의 target을 변경할 수 없습니다")
     if args.prompt and (args.resume or not args.sample_id):
         parser.error("--prompt는 새 한 사례 probe에서만 사용할 수 있습니다")
@@ -651,11 +667,12 @@ def main() -> int:
             Path(GEMMA_IMPROVED_CONFIG).name: "week02-gemma-improved",
         }.get(config_path.name, "week01")
         run_id = _new_run_id(prefix)
-        target_cases = all_cases
-        if args.sample_id:
-            target_cases = [case for case in all_cases if case.sample_id == args.sample_id]
-            if len(target_cases) != 1:
-                raise ValueError(f"sample_id를 찾을 수 없습니다: {args.sample_id}")
+        target_cases = _select_target_cases(
+            all_cases,
+            sample_id=args.sample_id,
+            split=args.split,
+            limit=args.limit,
+        )
         trial_id = args.trial_id
         run_dir = output_root / run_id
         run_dir.mkdir(parents=True, exist_ok=False)
@@ -730,8 +747,6 @@ def main() -> int:
         if not completed_ids <= set(run_contract["target_sample_ids"]):
             raise ValueError("run target 밖의 observation이 섞여 있습니다")
         pending = [case for case in target_cases if case.sample_id not in completed_ids]
-        if args.limit is not None:
-            pending = pending[: args.limit]
 
         provider = LiteLLMProvider(
             model=settings.provider.model,

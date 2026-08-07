@@ -6,6 +6,7 @@ from PIL import Image
 from verifiable_ai_workflow.image_robustness import (
     generate_variants,
     load_reviews,
+    score_original,
     score_variant,
 )
 from verifiable_ai_workflow.schemas import Evidence, StructuredAnswer
@@ -63,3 +64,8 @@ def test_review_must_be_completed(tmp_path: Path) -> None:
         assert "grounding_status" in str(exc)
     else:
         raise AssertionError("빈 사람 검토가 통과하면 안 됩니다")
+
+
+def test_original_compares_reference_numbers() -> None:
+    assert score_original("It rose from 10% to 20%.", _answer("10% and 20%")).status == "passed"
+    assert score_original("It rose from 10% to 20%.", _answer("20%")).status == "failed"

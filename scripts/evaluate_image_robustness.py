@@ -10,6 +10,7 @@ from verifiable_ai_workflow.image_robustness import (
     VariantArtifact,
     load_response_map,
     load_reviews,
+    score_original,
     score_variant,
 )
 
@@ -35,7 +36,8 @@ def main() -> int:
     required = {"original", *(item.variant_id for item in artifacts)}
     if set(responses) != required:
         raise SystemExit(f"응답 ID가 다릅니다: required={sorted(required)}")
-    scores = [
+    case = json.loads((args.variants.parent / "case.json").read_text(encoding="utf-8"))
+    scores = [score_original(case["reference_answer"], responses["original"])] + [
         score_variant(
             item,
             reviews[item.variant_id],

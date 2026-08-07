@@ -1,0 +1,91 @@
+name: Weekly validation and challenge
+
+on:
+  schedule:
+    - cron: "0 18 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: weekly-live-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validation-and-challenge:
+    if: >-
+      ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+          && vars.LIVE_TASK_ENABLED == 'true' }}
+    runs-on: [self-hosted, linux, x64, ai-eval]
+    timeout-minutes: 60
+    environment: live-evaluation
+    env:
+      NVIDIA_NIM_API_KEY: ${{ secrets.NVIDIA_NIM_API_KEY }}
+      COURSE_DATA_ROOT: ${{ vars.COURSE_DATA_ROOT }}
+      MONITORING_ROOT: ${{ vars.MONITORING_ROOT }}
+      REPORT_ROOT: reports/week-06-weekly-${{ github.run_id }}-${{ github.run_attempt }}
+      DEEPEVAL_DISABLE_DOTENV: "1"
+      DEEPEVAL_TELEMETRY_OPT_OUT: "YES"
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --disable-pip-version-check --no-deps "uv==0.11.28"
+      - run: uv sync --locked --dev
+      - name: Check pre-provisioned datasets and image review
+        run: |
+          test -n "$COURSE_DATA_ROOT"
+          test -n "$MONITORING_ROOT"
+          test -f "$COURSE_DATA_ROOT/aihub/cases.jsonl"
+          test -f "$COURSE_DATA_ROOT/opencqa/week-03-pairs.jsonl"
+          test -f "$COURSE_DATA_ROOT/opencqa/week-04-variants/variant-review.csv"
+          mkdir -p local-data "$MONITORING_ROOT"
+          ln -sfn "$COURSE_DATA_ROOT/aihub" local-data/aihub
+          ln -sfn "$COURSE_DATA_ROOT/opencqa" local-data/opencqa
+      - name: Run validation eight and challenge five
+        run: |
+          mkdir -p "$REPORT_ROOT"
+          uv run --no-sync python scripts/preflight_nvidia.py \
+            --config configs/nvidia-nim-gemma4.yaml
+          uv run --no-sync python scripts/run_nvidia_nim.py \
+            --config configs/nvidia-nim-gemma4.yaml \
+            --live --split validation \
+            --max-requests 8 --max-input-tokens 160000 --max-output-tokens 4000 \
+            --max-retries 0 --max-cost-usd 0.01 --max-wall-seconds 1800 \
+            --catalog-verified-on "$(date +%F)" | tee "$REPORT_ROOT/validation.log"
+          VALIDATION_DIR="$(sed -n 's/^run directory: //p' "$REPORT_ROOT/validation.log" | tail -1)"
+          uv run --no-sync python scripts/generate_image_variants.py --pair-number 1
+          uv run --no-sync python scripts/run_image_robustness.py \
+            --live --max-requests 5 --max-input-tokens 100000 --max-output-tokens 2500 \
+            --max-cost-usd 0.01 --max-wall-seconds 900 \
+            --output "$REPORT_ROOT/robustness"
+          uv run --no-sync python scripts/evaluate_image_robustness.py \
+            --responses "$REPORT_ROOT/robustness/responses.jsonl" \
+            --output "$REPORT_ROOT/robustness/evaluation.json"
+          uv run --no-sync python scripts/combine_weekly_results.py \
+            --validation-summary "$VALIDATION_DIR/summary.json" \
+            --validation-calls "$VALIDATION_DIR/provider-responses.jsonl" \
+            --robustness-summary "$REPORT_ROOT/robustness/summary.json" \
+            --robustness-calls "$REPORT_ROOT/robustness/calls.jsonl" \
+            --robustness-scores "$REPORT_ROOT/robustness/evaluation.json" \
+            --output "$REPORT_ROOT/combined"
+          uv run --no-sync python scripts/append_evaluation_history.py \
+            --profile weekly --summary "$REPORT_ROOT/combined/summary.json" \
+            --calls "$REPORT_ROOT/combined/calls.jsonl" \
+            --history "$MONITORING_ROOT/weekly.jsonl"
+      - if: ${{ always() }}
+        run: |
+          if test -f "$MONITORING_ROOT/weekly.jsonl"; then
+            cp "$MONITORING_ROOT/weekly.jsonl" "$REPORT_ROOT/history.jsonl"
+          fi
+      - if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: weekly-live-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.REPORT_ROOT }}
+          if-no-files-found: warn
+          retention-days: 30

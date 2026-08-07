@@ -143,3 +143,21 @@ def test_probe_prompt_must_be_an_existing_local_data_file(
     outside.write_text("허용하지 않는 위치\n", encoding="utf-8")
     with pytest.raises(ValueError, match="local-data"):
         live_runner._with_probe_prompt(settings, outside)
+
+
+def test_target_selection_applies_limit_before_live_contract(
+    live_runner: ModuleType,
+    project_root: Path,
+) -> None:
+    cases = build_cases(project_root / "data/cases/week-01-aihub.yaml")
+
+    smoke = live_runner._select_target_cases(cases, limit=3)
+    validation = live_runner._select_target_cases(cases, split="validation")
+
+    assert [case.sample_id for case in smoke] == [
+        "aihub-report-r01",
+        "aihub-report-r02",
+        "aihub-report-r03",
+    ]
+    assert len(validation) == 8
+    assert {case.split for case in validation} == {"validation"}
