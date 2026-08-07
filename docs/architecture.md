@@ -3,7 +3,7 @@
 학습자는 `scripts/`의 명령을 수업 순서대로 실행한다. 각 명령은
 `src/verifiable_ai_workflow/`의 공통 구현을 호출한다. 별도 평가 엔진은 없다.
 
-## Week 1–4 실행 순서
+## Week 1–5 실행 순서
 
 | 순서 | 학습자 실행 파일 | 하는 일 | 주요 결과 |
 | ---: | --- | --- | --- |
@@ -26,6 +26,9 @@
 | 17 | `generate_image_variants.py` | OpenCQA 차트 변형 생성 | 변형 이미지·사람 검토표 |
 | 18 | `run_image_robustness.py` | 원본과 변형 4개 VLM 실행 | 구조화 답·호출 기록 |
 | 19 | `evaluate_image_robustness.py` | 근거 보존·훼손을 다른 규칙으로 평가 | 견고성 결과 |
+| 20 | `inspect_agent_case.py` | agent 사례 한 건의 turn·도구·상태 확인 | 터미널 JSON |
+| 21 | `run_agent_cases.py` | 저장 turn으로 여섯 도구 사례 실행 | trace·상태·점수 |
+| 22 | `run_agent_live.py` | 실제 task model과 로컬 sandbox 실행 | live trace·상태·점수 |
 
 `inspect_*.py`는 학습자 화면에 필요한 질문·답·점수만 보여 준다. 실제 실행의 식별값,
 비용과 오류 기록은 `run_*.py`와 결과 파일에 남기되 첫 개념 설명에 섞지 않는다.
@@ -43,7 +46,9 @@ src/verifiable_ai_workflow/
 ├── evaluation/      고정 규칙 점수 계산과 DeepEval 저장
 ├── judge_*.py       사람–Judge 보정과 DeepEval Arena 비교
 ├── prompt_optimization.py  DeepEval PromptOptimizer와 OpenCQA 연결
-└── image_robustness.py     이미지 변형 생성과 견고성 판정
+├── image_robustness.py     이미지 변형 생성과 견고성 판정
+├── tools/           계산기·권한 조회·중복 방지 티켓 sandbox
+└── workflow/agent_runner.py  model turn과 도구 실행 연결
 ```
 
 실제 모델에 전달되는 값은 질문, 지시문(prompt)과 페이지 JPEG다. PDF 추출 문장은 원본·라벨
