@@ -1,11 +1,12 @@
 # 검증 가능한 AI 작업 흐름(Workflow) 설계·평가 과정
 
 공개 문서와 차트를 읽는 하나의 멀티모달 작업 흐름(workflow)을 6주 동안 발전시키는
-교육용 프로젝트다. 현재 브랜치는 Week 1과 Week 2까지의 실습을 담는다.
+교육용 프로젝트다. 현재 브랜치는 Week 1부터 Week 3까지의 실습을 담는다.
 
 - Week 1: PDF를 페이지 이미지로 만들고, VLM을 호출하고, 구조화된 답을 고정 규칙으로 채점한다.
 - Week 2: 모델과 지시문(prompt)을 한 번에 하나씩 바꾸며 결과를 비교한다.
-- Week 3 이후: 모델 기반 채점, 견고성, 도구 호출과 CI를 같은 작업 흐름에 추가한다.
+- Week 3: OpenCQA 설명형 답을 사람 평가와 반복 LLM Judge로 비교한다.
+- Week 4 이후: 견고성, 도구 호출과 CI를 같은 작업 흐름에 추가한다.
 
 처음 실습한다면 [Week 1 실습](docs/week-01-lab.md),
 [Week 2 실습](docs/week-02-lab.md) 순서로 진행한다. 낯선 용어와 도구는
@@ -27,6 +28,7 @@
 | --- | --- | --- |
 | Week 1 | `uv run --locked python scripts/inspect_deterministic_scoring_case.py` | 한 답이 왜 통과하거나 실패하는지 |
 | Week 2 | `uv run --locked python scripts/inspect_prompt_comparison_case.py` | 같은 모델에서 지시문만 바꿨을 때 무엇이 달라졌는지 |
+| Week 3 | `uv run --locked python scripts/inspect_judge_pair.py --number 1` | 두 설명형 답과 사람·Judge 비교 기준 |
 
 두 명령은 저장 응답(fixture)을 사용하므로 코드 학습과 회귀검사용이다. 현재 모델 품질은
 실제 API로 새로 얻은 응답에서만 판단한다.
@@ -76,6 +78,9 @@ local-data/aihub/source/
 전처리 결과는 `local-data/aihub/prepared/`, 실행 결과는 `reports/`에 생성되며 둘 다 Git에서
 제외된다. 자세한 경로는 [AIHub 데이터 준비](docs/aihub-data.md)를 따른다.
 
+Week 3 OpenCQA 원본도 Git에 넣지 않는다. [OpenCQA 데이터 준비](docs/open-cqa-data.md)를
+따라 선택한 30개 차트와 평가표를 `local-data/opencqa/`에 만든다.
+
 모델에는 PDF 문장을 보내지 않는다. PDF를 페이지 JPEG로 바꾸고 VLM이 이미지에서 직접
 읽게 한다. 전처리 때 저장되는 텍스트는 원본·라벨 확인용이며 모델 입력과 채점에 사용하지
 않는다.
@@ -109,9 +114,11 @@ DEEPEVAL_TELEMETRY_OPT_OUT=YES
 
 - [Week 1 실습](docs/week-01-lab.md): 환경 준비부터 한 사례·40건 실행과 고정 규칙 채점까지
 - [Week 2 실습](docs/week-02-lab.md): Gemma 지시문 개선과 Gemma–Gemini 비교까지
+- [Week 3 실습](docs/week-03-lab.md): OpenCQA 사람 평가와 반복 LLM Judge 보정
 - [수업 도구·채점기·용어](docs/terms-tools-and-scoring.md): 라이브러리, 지표, 실행 용어의 뜻
 - [Week 2 비교 결과](docs/week-02-gemma-gemini-comparison-report-2026-08-05.md): 실제 결과를 읽는 예시
 - [코드 구조](docs/architecture.md): 실행 파일과 내부 코드의 연결
 - [AIHub 데이터 준비](docs/aihub-data.md): 원본 위치와 전처리 결과
+- [OpenCQA 데이터 준비](docs/open-cqa-data.md): 공식 원본 revision과 로컬 30쌍 준비
 - [NVIDIA NIM 실행 안내](docs/nvidia-nim.md): 사전 점검과 실제 호출 안전장치
 - [실제 API 실행 승인 범위](docs/live-api-approval.md): 외부 전송 자료와 호출 상한
