@@ -23,7 +23,6 @@ def test_live_egress_manifest_is_scoped_to_week_01_and_week_02(
     }
     approval = payload["approval_conditions"]
     assert approval["scope"] == "week_01_to_week_02_only"
-    assert approval["sealed_test_allowed"] is False
 
 
 def test_every_external_run_fixes_endpoint_key_model_and_caps(

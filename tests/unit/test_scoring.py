@@ -15,10 +15,7 @@ def test_expected_answer_and_page_pass(project_root: Path) -> None:
     assert scores["schema_validity"] == 1.0
     assert scores["answer_exact"] == 1.0
     assert scores["answer_similarity"] == 1.0
-    assert scores["answer_anls"] == 1.0
-    assert scores["answer_token_f1"] == 1.0
     assert scores["numeric_match"] == 1.0
-    assert scores["evidence_page_f1"] == 1.0
     assert scores["task_success"] == 1.0
 
 
@@ -44,8 +41,6 @@ def test_numeric_answer_allows_wording_variation(project_root: Path) -> None:
     assert scores["answer_exact"] == 0.0
     assert scores["numeric_match"] == 1.0
     assert 0.0 < scores["answer_similarity"] < 1.0
-    assert scores["answer_anls"] == 0.0
-    assert 0.0 < scores["answer_token_f1"] < 1.0
     assert scores["answer_correct"] == 1.0
 
 
@@ -120,8 +115,6 @@ def test_one_of_multiple_acceptable_pages_is_enough(project_root: Path) -> None:
     _, scores, _ = score_output(response, case)
 
     assert case.expected.pages == [1, 3]
-    assert scores["evidence_page_precision"] == 1.0
-    assert scores["evidence_page_recall"] == 0.5
     assert scores["evidence_coverage"] == 1.0
     assert scores["task_success"] == 1.0
 

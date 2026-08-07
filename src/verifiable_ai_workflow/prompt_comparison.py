@@ -29,7 +29,6 @@ METRIC_NAMES = (
     "schema_validity",
     "json_object_only",
     "numeric_match",
-    "evidence_page_f1",
     "quote_answer_support",
 )
 

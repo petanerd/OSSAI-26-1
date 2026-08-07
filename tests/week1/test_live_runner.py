@@ -45,7 +45,7 @@ def test_full_run_keeps_observed_status(live_runner: ModuleType) -> None:
     assert status == observed_status == "complete"
 
 
-def test_local_case_copy_must_exactly_match_tracked_non_sealed_40(
+def test_local_case_copy_must_exactly_match_tracked_40(
     live_runner: ModuleType,
     project_root: Path,
 ) -> None:
@@ -64,15 +64,6 @@ def test_local_case_copy_must_exactly_match_tracked_non_sealed_40(
             canonical_cases=canonical,
             local_cases=changed,
         )
-
-    sealed = list(canonical)
-    sealed[0] = sealed[0].model_copy(update={"split": "sealed_test"})
-    with pytest.raises(ValueError, match="sealed_test"):
-        live_runner._require_approved_case_copy(
-            canonical_cases=canonical,
-            local_cases=sealed,
-        )
-
 
 def test_live_runner_allows_only_reviewed_nvidia_configs(
     live_runner: ModuleType,

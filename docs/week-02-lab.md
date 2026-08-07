@@ -21,7 +21,7 @@ Week 1 결과 폴더의 `summary.json`을 열어 다음을 확인한다.
 - `requested_model`이 `nvidia_nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`이다.
 - `record_count`와 `target_count`가 같다.
 - `provider_error_count`와 `model_drift_count`가 기록되어 있다.
-- 고정 규칙 채점 기준은 `aihub-vqa-deterministic-v2`다.
+- 고정 규칙 채점 기준은 `aihub-vqa-deterministic-v3`다.
 
 Week 1에서는 Gemma를 실행하지 않았다. 따라서 저장된 Week 1 응답을 Gemma 결과라고 부르지
 않는다.

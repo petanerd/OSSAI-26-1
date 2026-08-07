@@ -11,7 +11,7 @@
 2. baseline과 후보를 validation 6개에서 비교한 뒤 하나를 고른다.
 3. 선택한 지시문을 원본 차트와 이미지 변형 4개에 적용한다.
 
-DSPy나 두 번째 최적화 framework는 사용하지 않는다.
+Prompt 최적화는 DeepEval `PromptOptimizer`와 GEPA 한 경로로 실행한다.
 
 ## 1. 데이터 분할 확인
 

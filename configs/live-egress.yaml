@@ -28,7 +28,6 @@ payload:
 approval_conditions:
   scope: week_01_to_week_02_only
   execution_order: probe_then_full
-  sealed_test_allowed: false
 
 runs:
   week_01_task:

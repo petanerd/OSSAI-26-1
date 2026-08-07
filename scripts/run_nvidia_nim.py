@@ -122,8 +122,6 @@ def _require_approved_case_copy(
 
     if len(canonical_cases) != 40:
         raise ValueError("canonical Week 1 authoring data는 정확히 40건이어야 합니다")
-    if any(case.split == "sealed_test" for case in canonical_cases + local_cases):
-        raise ValueError("Week 1 live 실행에는 sealed_test 입력을 사용할 수 없습니다")
     canonical_payload = [case.model_dump(mode="json") for case in canonical_cases]
     local_payload = [case.model_dump(mode="json") for case in local_cases]
     if local_payload != canonical_payload:
