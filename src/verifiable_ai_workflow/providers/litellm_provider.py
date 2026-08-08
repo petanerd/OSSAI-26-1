@@ -12,7 +12,6 @@ from typing import Any, Literal
 os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
 
 import litellm
-from pydantic import BaseModel
 
 from ..config import require_api_key
 from ..live_execution import LiveBudget, LiveBudgetCaps, LiveBudgetExceeded
@@ -161,13 +160,7 @@ class LiteLLMProvider:
     def attempt_count(self) -> int:
         return self.budget.attempt_count
 
-    def generate(
-        self,
-        sample_id: str,
-        messages: list[dict[str, Any]],
-        *,
-        response_schema: type[BaseModel] | None = StructuredAnswer,
-    ) -> Any:
+    def generate(self, sample_id: str, messages: list[dict[str, Any]]) -> Any:
         if self._halted_reason is not None:
             blocked = RuntimeError(
                 f"이 provider run은 이전 응답 검증 실패로 중단됐습니다: {self._halted_reason}"
@@ -200,13 +193,13 @@ class LiteLLMProvider:
             )
         if self.api_base:
             request_base["api_base"] = self.api_base
-        if self.structured_output == "json_schema" and response_schema is not None:
+        if self.structured_output == "json_schema":
             request_base["response_format"] = {
                 "type": "json_schema",
                 "json_schema": {
-                    "name": response_schema.__name__,
+                    "name": "structured_answer",
                     "strict": True,
-                    "schema": response_schema.model_json_schema(),
+                    "schema": StructuredAnswer.model_json_schema(),
                 },
             }
         response = None

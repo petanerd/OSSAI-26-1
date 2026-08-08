@@ -3,11 +3,11 @@ artifact_schema_version: 2
 paths:
   case_authoring: data/cases/week-01-aihub.yaml
   cases: local-data/aihub/cases.jsonl
-  prompt: prompts/pdf-question-answer.md
+  prompt: prompts/pdf-question-answer-json-only.md
   raw_documents: local-data/aihub/source
   prepared_documents: local-data/aihub/prepared
-  recorded_responses: data/recorded/week-02-gemma-baseline-responses.jsonl
-  output: reports/week-02-gemma-baseline
+  recorded_responses: data/recorded/week-02-diffusiongemma-responses.jsonl
+  output: reports/week-02-live/diffusiongemma
 
 documents:
   render_dpi: 150
@@ -16,14 +16,19 @@ documents:
 
 provider:
   kind: litellm
-  model: nvidia_nim/google/gemma-4-31b-it
-  expected_actual_model: google/gemma-4-31b-it
+  model: nvidia_nim/google/diffusiongemma-26b-a4b-it
+  expected_actual_model: google/diffusiongemma-26b-a4b-it
   api_base: https://integrate.api.nvidia.com/v1
   api_key_env: NVIDIA_NIM_API_KEY
   structured_output: prompt_only
+  temperature: 1.0
+  top_p: 0.95
+  thinking_mode: disabled
+  thinking_parameter: chat_template
+  max_images_per_prompt: 8
   billing_basis: developer_program_free_endpoint
-  pricing_source_url: https://docs.api.nvidia.com/nim/docs/product
-  pricing_verified_on: 2026-07-30
+  pricing_source_url: https://build.nvidia.com/google/diffusiongemma-26b-a4b-it
+  pricing_verified_on: 2026-08-04
   input_cost_per_token_usd: 0.0
   output_cost_per_token_usd: 0.0
 

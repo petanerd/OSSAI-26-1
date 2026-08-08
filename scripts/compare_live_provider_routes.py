@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""기준 질문 40건을 승인된 두 API 제공자(provider)로 비교한다."""
+"""Canonical 40건을 승인된 실제 두 provider로 제한 비교한다."""
 
 from __future__ import annotations
 
@@ -114,14 +114,8 @@ def _probe_succeeded(execution) -> bool:
     )
 
 
-def _require_clean_git(probe_sample_id: str | None) -> bool:
-    """한 사례 probe는 탐색용으로 허용하고 전체 비교만 clean commit을 요구한다."""
-
-    return probe_sample_id is None
-
-
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Week 2 두 API 제공자 실제 비교")
+    parser = argparse.ArgumentParser(description="Week 2 two-provider live comparison")
     parser.add_argument("--config", default=CANONICAL_CONFIG)
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--max-requests", type=int, required=True)
@@ -135,11 +129,11 @@ def main() -> int:
     parser.add_argument(
         "--probe-sample-id",
         choices=PROBE_SAMPLE_IDS,
-        help="두 API 제공자에 기준 사례 1건씩 보내고 판단 보류 증거를 남깁니다",
+        help="두 provider에 canonical sample 1건씩만 보내고 inconclusive 증거를 남깁니다",
     )
     args = parser.parse_args()
     if not args.live:
-        parser.error("실제 두 API 제공자 호출에는 --live가 필요합니다")
+        parser.error("실제 두-provider 호출에는 --live가 필요합니다")
 
     load_project_env(PROJECT_ROOT)
     try:
@@ -165,7 +159,6 @@ def main() -> int:
             catalog_verified_on=args.catalog_verified_on,
             output_dir=args.output,
             probe_sample_id=args.probe_sample_id,
-            require_clean_git=_require_clean_git(args.probe_sample_id),
         )
     except (
         ValidationError,

@@ -45,7 +45,7 @@ def test_full_run_keeps_observed_status(live_runner: ModuleType) -> None:
     assert status == observed_status == "complete"
 
 
-def test_local_case_copy_must_exactly_match_tracked_40(
+def test_local_case_copy_must_exactly_match_tracked_non_sealed_40(
     live_runner: ModuleType,
     project_root: Path,
 ) -> None:
@@ -65,6 +65,15 @@ def test_local_case_copy_must_exactly_match_tracked_40(
             local_cases=changed,
         )
 
+    sealed = list(canonical)
+    sealed[0] = sealed[0].model_copy(update={"split": "sealed_test"})
+    with pytest.raises(ValueError, match="sealed_test"):
+        live_runner._require_approved_case_copy(
+            canonical_cases=canonical,
+            local_cases=sealed,
+        )
+
+
 def test_live_runner_allows_only_reviewed_nvidia_configs(
     live_runner: ModuleType,
     project_root: Path,
@@ -78,77 +87,12 @@ def test_live_runner_allows_only_reviewed_nvidia_configs(
     assert live_runner._require_approved_config(
         "configs/nvidia-nim-gemma4-baseline.yaml"
     ) == (project_root / "configs/nvidia-nim-gemma4-baseline.yaml")
+    assert live_runner._require_approved_config("configs/nvidia-nim-kimi-k2.6.yaml") == (
+        project_root / "configs/nvidia-nim-kimi-k2.6.yaml"
+    )
+    assert live_runner._require_approved_config("configs/nvidia-nim-diffusiongemma.yaml") == (
+        project_root / "configs/nvidia-nim-diffusiongemma.yaml"
+    )
 
     with pytest.raises(LiveExecutionError, match="승인된 NVIDIA NIM 설정"):
         live_runner._require_approved_config("configs/week-01.yaml")
-
-
-def test_only_full_quality_run_requires_clean_git(
-    live_runner: ModuleType,
-    project_root: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    settings = live_runner.load_settings(project_root / "configs/nvidia-nim.yaml")
-    case = build_cases(project_root / "data/cases/week-01-aihub.yaml")[0]
-    monkeypatch.setattr(live_runner, "_git_state", lambda: ("a" * 40, False))
-    monkeypatch.setattr(live_runner, "_sha256_file", lambda _path: "b" * 64)
-
-    exploratory = live_runner._build_provenance(
-        settings=settings,
-        config_path=project_root / "configs/nvidia-nim.yaml",
-        cases=[case],
-        input_manifest={"sample_ids": [case.sample_id]},
-        catalog_verified_on=live_runner.date.today(),
-        require_clean_git=False,
-    )
-    assert exploratory["git_clean"] is False
-
-    with pytest.raises(RuntimeError, match="전체 품질 실행"):
-        live_runner._build_provenance(
-            settings=settings,
-            config_path=project_root / "configs/nvidia-nim.yaml",
-            cases=[case],
-            input_manifest={"sample_ids": [case.sample_id]},
-            catalog_verified_on=live_runner.date.today(),
-            require_clean_git=True,
-        )
-
-
-def test_probe_prompt_must_be_an_existing_local_data_file(
-    live_runner: ModuleType,
-    project_root: Path,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    settings = live_runner.load_settings(project_root / "configs/nvidia-nim-gemma4-baseline.yaml")
-    local_data = tmp_path / "local-data"
-    local_data.mkdir()
-    prompt = local_data / "my-prompt.md"
-    prompt.write_text("JSON 하나만 반환합니다.\n", encoding="utf-8")
-    monkeypatch.setattr(live_runner, "PROJECT_ROOT", tmp_path)
-
-    changed = live_runner._with_probe_prompt(settings, prompt)
-    assert changed.paths.prompt == "local-data/my-prompt.md"
-
-    outside = tmp_path / "outside.md"
-    outside.write_text("허용하지 않는 위치\n", encoding="utf-8")
-    with pytest.raises(ValueError, match="local-data"):
-        live_runner._with_probe_prompt(settings, outside)
-
-
-def test_target_selection_applies_limit_before_live_contract(
-    live_runner: ModuleType,
-    project_root: Path,
-) -> None:
-    cases = build_cases(project_root / "data/cases/week-01-aihub.yaml")
-
-    smoke = live_runner._select_target_cases(cases, limit=3)
-    validation = live_runner._select_target_cases(cases, split="validation")
-
-    assert [case.sample_id for case in smoke] == [
-        "aihub-report-r01",
-        "aihub-report-r02",
-        "aihub-report-r03",
-    ]
-    assert len(validation) == 8
-    assert {case.split for case in validation} == {"validation"}

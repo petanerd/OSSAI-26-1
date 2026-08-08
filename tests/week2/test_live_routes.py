@@ -424,7 +424,7 @@ def test_fake_two_provider_run_writes_raw_results_and_provenance(
     assert (output / "candidate-live-records.jsonl").is_file()
     input_manifest = json.loads((output / "input-manifest.json").read_text(encoding="utf-8"))
     assert input_manifest["input_modality"] == "page_images_only"
-    assert input_manifest["scoring_profile"] == "aihub-vqa-deterministic-v3"
+    assert input_manifest["scoring_profile"] == "aihub-vqa-deterministic-v2"
     assert "page_texts" not in json.dumps(input_manifest)
     assert (output / "run-manifest.json").is_file()
     assert (output / "baseline-provenance.json").is_file()

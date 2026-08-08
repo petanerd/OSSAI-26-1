@@ -4,7 +4,6 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from pydantic import BaseModel
 
 from verifiable_ai_workflow.live_execution import LiveBudgetExceeded
 from verifiable_ai_workflow.providers.litellm_provider import LiteLLMProvider
@@ -85,52 +84,6 @@ def test_litellm_provider_requests_strict_json_schema(
     assert captured["response_format"]["type"] == "json_schema"
     with pytest.raises(RuntimeError, match="상한 1건"):
         provider.generate("sample-2", [{"role": "user", "content": "질문"}])
-
-
-def test_litellm_provider_accepts_judge_response_schema(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    class Winner(BaseModel):
-        winner: str
-
-    monkeypatch.setenv("TEST_TASK_KEY", "test-key")
-    captured: dict[str, object] = {}
-
-    def fake_completion(**kwargs):
-        captured.update(kwargs)
-        return SimpleNamespace(
-            id="response-1",
-            model="test/model",
-            usage=SimpleNamespace(prompt_tokens=10, completion_tokens=5),
-            choices=[SimpleNamespace(message=SimpleNamespace(content='{"winner":"a"}'))],
-        )
-
-    monkeypatch.setattr(
-        "verifiable_ai_workflow.providers.litellm_provider.litellm.completion",
-        fake_completion,
-    )
-    monkeypatch.setattr(
-        "verifiable_ai_workflow.providers.litellm_provider.litellm.cost_per_token",
-        lambda **kwargs: (0.0, 0.0),
-    )
-    provider = LiteLLMProvider(
-        model="test/model",
-        api_key_env="TEST_TASK_KEY",
-        api_base=None,
-        structured_output="json_schema",
-        max_requests=1,
-        requests_per_minute=1200,
-        max_retries=0,
-        retry_initial_seconds=1,
-        max_cost_usd=0.1,
-        max_input_tokens=100,
-        max_output_tokens=50,
-        max_wall_seconds=45,
-    )
-
-    provider.generate("pair-1", [{"role": "user", "content": "judge"}], response_schema=Winner)
-
-    assert captured["response_format"]["json_schema"]["name"] == "Winner"
 
 
 def test_resume_preserves_rate_interval_before_first_network_attempt(

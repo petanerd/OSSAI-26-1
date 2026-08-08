@@ -88,7 +88,7 @@ class EvaluationCase(Contract):
     sample_id: str = Field(min_length=1)
     family_id: str = Field(min_length=1)
     document_id: str = Field(min_length=1)
-    split: Literal["development", "validation", "challenge"]
+    split: Literal["development", "validation", "challenge", "sealed_test"]
     source: SourceMetadata
     risk_level: Literal["low", "medium", "high"]
     question: str = Field(min_length=1)

@@ -183,7 +183,7 @@ class DocumentInputDigest(LiveModel):
 
 class LiveInputManifest(LiveModel):
     input_modality: Literal["page_images_only"] = "page_images_only"
-    scoring_profile: Literal["aihub-vqa-deterministic-v3"] = SCORING_PROFILE
+    scoring_profile: Literal["aihub-vqa-deterministic-v2"] = SCORING_PROFILE
     case_authoring_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     prompt_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     output_schema_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -266,7 +266,7 @@ class LiveSampleRecord(LiveModel):
     route_role: Literal["baseline", "candidate"]
     sample_id: str
     family_id: str
-    split: Literal["development", "validation", "challenge"]
+    split: Literal["development", "validation", "challenge", "sealed_test"]
     risk_level: Literal["low", "medium", "high"]
     source_title: str
     source_license: str
