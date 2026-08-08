@@ -26,7 +26,6 @@ def _result(index: int, *, success: bool) -> EvaluationResult:
         "schema_validity": 1.0,
         "json_object_only": 1.0,
         "numeric_match": 1.0,
-        "evidence_page_f1": 1.0,
         "quote_answer_support": 1.0,
     }
     return EvaluationResult(

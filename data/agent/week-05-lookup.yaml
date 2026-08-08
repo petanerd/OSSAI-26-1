@@ -1,0 +1,7 @@
+records:
+  public-service:
+    status: operational
+    updated_at: "2026-08-07T09:00:00+09:00"
+  staff-01:
+    office_phone: 02-0000-0000
+    personal_phone: 010-9999-0000
