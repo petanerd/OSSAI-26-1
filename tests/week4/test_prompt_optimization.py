@@ -107,7 +107,9 @@ def test_metric_returns_feedback_for_missing_number() -> None:
 
 def test_baseline_prompt_interpolates_question(project_root: Path) -> None:
     prompt = Prompt(text_template=(project_root / "prompts/week-04-baseline.md").read_text())
-    assert "What changed?" in prompt.interpolate(question="What changed?")
+    rendered = prompt.interpolate(question="What changed?")
+    assert "What changed?" in rendered
+    assert all(field in rendered for field in ("evidence", "abstained", "답변 보류"))
 
 
 def test_vlm_callback_labels_jpeg_input_correctly(tmp_path: Path) -> None:
