@@ -121,9 +121,10 @@ Week 2 개인 prompt는 `local-data/week-02-students/<alias>/prompt.md`에 두�
 | Week 4 GEPA 검토 | Google AI Studio | `gemini/gemini-3.5-flash-lite` |
 
 Gemini 3.5 Flash Lite는 현재 잠긴 LiteLLM adapter로 요청 모델·실제 처리 모델과 구조화 출력을
-확인할 수 있어 Judge로 쓴다. 2026-08-17에 OpenCQA JPEG·질문·기대 답·Gemma 실제 출력을
-Google로 보내는 범위를 승인했다. Free Tier 자료가 제품 개선에 사용될 수 있다는 조건도 실행
-전에 다시 확인한다.
+확인할 수 있어 Week 2·3 Judge와 Week 4 지시문 검토에 쓴다. 2026-08-17에 OpenCQA JPEG·질문·
+기대 답·Gemma 실제 출력을 Google로 보내는 범위를 승인했다. Week 4 검토에는 JPEG 대신
+지시문·질문·기대 답·NIM 출력·고정 점수와 이유를 보낸다. Free Tier 자료가 제품 개선에
+사용될 수 있다는 조건도 실행 전에 다시 확인한다.
 
 승인 때 확인한 공개 한도는 15 RPM, 입력 250,000 TPM, 500 RPD다. 실제 실행은 현재 프로젝트의
 할당량과 당일 잔여 RPD가 240건 이상인지 사전 점검한다. 코드는 15 RPM·입력 75,000 TPM·

@@ -208,6 +208,12 @@ Gemini의 text-only GEPA 진단·재작성은 2,000 token까지 허용한다. �
 보내지 않는다. API key도 보내지 않는다. 원응답·실제 처리 모델·token·시간·오류는
 `calls.jsonl`과 `summary.json`에 보존한다.
 
+2026-08-18 실행 직전 NVIDIA 카탈로그에서 `google/gemma-4-31b-it` 제공을 확인했다.
+AI Studio의 `ossai-26-1` 프로젝트는 Gemini 3.5 Flash Lite 기준 1일 사용량이
+0/15 RPM·0/250,000 TPM·0/500 RPD였다. 최종 정본은 NIM 45회·Gemini 4회와 견고성 NIM
+5회를 상한 안에서 완료했고 provider 오류와 실제 모델 불일치는 0건이었다. 이 확인은 다음
+실행의 quota나 가격을 보장하지 않으므로 실행 당일 다시 확인한다.
+
 ## Week 5–6에서 새 외부 전송을 추가할 때
 
 현재 승인 범위는 Week 5–6의 새 API 전송을 승인하지 않는다. 이후 코드가 이미지,

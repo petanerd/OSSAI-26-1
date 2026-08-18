@@ -130,7 +130,7 @@ test -f "$OPTIMIZATION_DIR/calls.jsonl"
 
 ```bash
 shasum -a 256 local-data/opencqa/week-03-cases.jsonl
-rg -n '"(status|observed_status|git_sha|development_count|validation_count|test_count|test_used_for_generation_or_selection|baseline_mean|candidate_mean|selected|requested_model|expected_actual_model|provider_error_count|model_drift_count)"' \
+rg -n '"(status|observed_status|git_sha|development_count|validation_count|test_count|test_used_for_generation_or_selection|baseline_mean|candidate_mean|candidate_changed|selected|selection_reason|requested_model|expected_actual_model|provider_error_count|model_drift_count)"' \
   "$OPTIMIZATION_DIR/summary.json"
 rg -n 'week-03-cases.jsonl' "$OPTIMIZATION_DIR/summary.json"
 ```
@@ -140,6 +140,7 @@ rg -n 'week-03-cases.jsonl' "$OPTIMIZATION_DIR/summary.json"
 - `observed_status=complete`
 - development 18건, validation 6건, test 6건
 - `test_used_for_generation_or_selection=false`
+- `candidate_changed`와 `selection_reason`이 기록됨
 - `provider_error_count=0`, `model_drift_count=0`
 - `target_provider`는 NIM Gemma, `optimizer_provider`는 Gemini Flash Lite
 - `artifact_sha256.week-03-cases.jsonl`과 현재 파일의 SHA-256이 같음
@@ -153,9 +154,15 @@ diff -u prompts/week-04-baseline.md "$OPTIMIZATION_DIR/selected-prompt.md" || tr
 ```
 
 최적화 점수는 JSON 구조가 유효한 답에서 기준 답의 숫자 일치를 70%, 핵심 단어 겹침을 30%로
-계산한 학습용 고정 점수다. 설명 품질 전체를 증명하지 않는다. 후보 평균이 기준선보다 높을 때만
-후보를 선택한다. `status=pass`는 실행 조건과 파일이 완결됐다는 뜻이지 모든 답이 좋다는 뜻이
-아니다.
+계산한 학습용 고정 점수다. 설명 품질 전체를 증명하지 않는다. 실제로 다른 후보의 평균이
+기준선보다 높을 때만 후보를 선택한다. 후보가 기준선과 같으면 반복 모델 응답의 점수 차이를
+개선으로 보지 않고 `candidate_identical`로 기준선을 유지한다. `status=pass`는 실행 조건과
+파일이 완결됐다는 뜻이지 모든 답이 좋다는 뜻이 아니다.
+
+2026-08-18 실제 정본 생성에서는 Git `2102ba6`, NIM 45회와 Gemini 4회를 사용했다. 오류와
+실제 모델 불일치는 0건이었다. Validation 평균은 기준선 `0.311`, 후보 `0.264`여서
+`validation_not_improved`로 기준선을 유지했다. 이 수치는 수업 release가 바뀌면 다시
+확인하며, 학생 개인 점수나 배포 성능으로 일반화하지 않는다.
 
 다음 표를 `local-data/learning-progress.md`의 Week 4에 기록한다.
 
@@ -228,12 +235,22 @@ uv run --locked python scripts/evaluate_image_robustness.py \
 
 1. `summary.json`: 5개 응답 완결 여부, 실제 모델, 선택 지시문 hash와 오류
 2. `responses.jsonl`: 원본·변형별 원응답과 구조화 답
-3. 개인 `evaluation.json`: 원본과 변형 4개의 `passed / failed / invalid_variant`
-4. 개인 `evaluation-manifest.json`: 응답·변형·검토표·채점기·출력 형식 hash
+3. 개인 `evaluation.json`: 원본과 변형 4개의
+   `passed / failed / inconclusive / invalid_variant`
+4. 개인 `evaluation-manifest.json`: 응답·변형·검토표·채점기·metric·schema hash
+
+`source_git_sha`는 실제 응답을 만든 코드이고, `scorer_sha256`은 지금 다시 계산한 채점기다.
+응답을 다시 호출하지 않고 채점 규칙만 고쳤다면 두 값을 함께 남겨 변경 범위를 구분한다.
 
 근거가 보존된 변형은 원본과 변형 모두 점수 0.8 이상이고, 근거가 있으며, 원본 답의 숫자를
-유지해야 한다. 근거가 훼손된 변형은 원본이 통과하고 변형 답이 `abstained=true`, 빈 근거와
-보류 이유를 가져야 한다. 두 상태를 하나의 정답 유지율로 합치지 않는다.
+유지해야 한다. 원본 품질이 0.8 미만이면 변형 답이 같아도 정답 유지를 확인할 수 없어
+`inconclusive`다. 근거가 훼손된 변형은 `abstained=true`, 빈 근거와 보류 이유를 가져야 한다.
+두 상태를 하나의 정답 유지율로 합치지 않는다.
+
+같은 날 NIM 실제 응답 5건은 모두 유효한 구조화 답이었고 provider 오류와 모델 불일치는
+0건이었다. 원본이 필요 이상으로 주변 값을 나열해 점수 `0.139`로 실패했다. 회전·JPEG 답은
+원본과 같았지만 원본 품질 때문에 `inconclusive`였고, 잘림·가림은 둘 다 안전하게 답변을
+보류해 `passed`였다. 따라서 결과는 통과 2, 실패 1, 판정 불가 2, 변형 무효 0이다.
 
 ## 6. 강의자 대표 live 관찰
 
@@ -278,5 +295,5 @@ API key, `.env`, OpenCQA 원본과 튜터 정본은 제출하지 않는다.
 - validation 평균이 높지 않으면 기준선을 유지하는 코드를 확인했다.
 - 원본과 변형 네 개를 직접 보고 근거 보존·훼손을 판정했다.
 - 저장 VLM 응답 5개를 다시 채점하고 실패 이유를 한 사례에서 연결했다.
-- `invalid_variant`, 품질 `fail`, provider 문제의 `inconclusive`를 구분했다.
+- `invalid_variant`, 품질 `fail`, 원본 품질 부족·provider 문제의 `inconclusive`를 구분했다.
 - 대표 live 한 사례를 전체 견고성이나 배포 품질로 일반화하지 않았다.

@@ -82,6 +82,8 @@ PDF 추출 문장은 원본·라벨을 점검할 때만 쓰며, 모델 입력이
 Week 4의 Gemini 최적화 검토에는 원본 지시문, 질문, 기대 답, NIM 출력과 고정 점수·이유를
 보낸다. OpenCQA JPEG와 사람의 이미지 검토표는 보내지 않는다. `calls.jsonl`은 NIM 타깃을
 `provider_role=target`, Gemini 검토를 `provider_role=optimizer`로 구분한다.
+같은 후보는 반복 응답 점수 차이로 채택하지 않는다. 견고성 평가에서 원본 품질이 미달이면
+근거 보존 변형은 `inconclusive`, 근거 훼손 변형의 안전한 답변 보류는 별도로 판정한다.
 
 ## 한 사례의 실제 흐름
 
