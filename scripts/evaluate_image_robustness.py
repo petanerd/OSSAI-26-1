@@ -94,6 +94,7 @@ def main() -> int:
     print(
         f"통과={sum(item.status == 'passed' for item in scores)}, "
         f"실패={sum(item.status == 'failed' for item in scores)}, "
+        f"판정 불가={sum(item.status == 'inconclusive' for item in scores)}, "
         f"변형 무효={sum(item.status == 'invalid_variant' for item in scores)}"
     )
     return 0

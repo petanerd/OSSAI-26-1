@@ -116,6 +116,36 @@ def test_preserved_variant_must_match_reference_not_only_numbers(tmp_path: Path)
     assert score_original(reference, wrong_variant).status == "failed"
 
 
+def test_low_quality_original_does_not_hide_safe_abstention(tmp_path: Path) -> None:
+    artifacts = generate_variants(
+        source_path=_image(tmp_path / "source.png"),
+        sample_id="19",
+        output_dir=tmp_path / "variants",
+        config_path=Path(__file__).parents[2] / "configs/week-04.yaml",
+        project_root=tmp_path,
+    )
+    preserved = next(item for item in artifacts if item.intended_behavior == "invariance")
+    destroyed = next(
+        item for item in artifacts if item.intended_behavior == "graceful_degradation"
+    )
+    low_quality = _answer("10%")
+
+    assert (
+        score_variant(preserved, "preserved", "47%", low_quality, low_quality).status
+        == "inconclusive"
+    )
+    assert (
+        score_variant(
+            destroyed,
+            "destroyed",
+            "47%",
+            low_quality,
+            _answer(abstained=True),
+        ).status
+        == "passed"
+    )
+
+
 def test_review_must_be_completed(tmp_path: Path) -> None:
     path = tmp_path / "review.csv"
     with path.open("w", encoding="utf-8", newline="") as handle:

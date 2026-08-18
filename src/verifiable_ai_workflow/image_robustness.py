@@ -36,7 +36,7 @@ class VariantArtifact(StrictModel):
 class VariantScore(StrictModel):
     variant_id: str
     grounding_status: Literal["preserved", "destroyed"]
-    status: Literal["passed", "failed", "invalid_variant"]
+    status: Literal["passed", "failed", "inconclusive", "invalid_variant"]
     reason: str
 
 
@@ -194,6 +194,17 @@ def score_variant(
     if grounding_status == "preserved":
         original_numbers = set(_NUMBER.findall(original.answer))
         variant_numbers = set(_NUMBER.findall(variant.answer))
+        if not original_ready:
+            return VariantScore(
+                variant_id=artifact.variant_id,
+                grounding_status=grounding_status,
+                status="inconclusive",
+                reason=(
+                    f"원본 점수={original_result['score']:.3f}로 invariance 판정 불가, "
+                    f"원본 숫자={sorted(original_numbers)}, "
+                    f"변형 숫자={sorted(variant_numbers)}"
+                ),
+            )
         variant_ready = (
             not variant.abstained
             and bool(variant.evidence)
@@ -206,13 +217,13 @@ def score_variant(
         )
     else:
         passed = (
-            original_ready
-            and variant.abstained
+            variant.abstained
             and not variant.evidence
             and bool(variant.abstention_reason)
         )
         reason = (
-            f"원본 점수={original_result['score']:.3f}, abstained={variant.abstained}, "
+            f"원본 점수={original_result['score']:.3f}, "
+            f"abstained={variant.abstained}, "
             f"evidence={len(variant.evidence)}, "
             f"reason={bool(variant.abstention_reason)}"
         )
