@@ -107,10 +107,162 @@ ROBUSTNESS_DIR="local-data/week-04-full-runs/robustness-RELEASE_SHA"
 과거 `week-03-pairs.jsonl`에서 만든 `optimization/` 결과는 현재 수업 정본이 아니다. 현재
 `week-03-cases.jsonl` hash와 맞는 새 결과가 없으면 없는 값을 추정하지 말고 튜터에게 요청한다.
 
-## 3. 저장된 지시문 선택 결과 읽기
+## 3. 실제로 지시문이 어떻게 바뀌었는지 읽기
 
-PromptOptimizer 전체 실행은 여러 번의 실제 API 요청을 사용하므로 튜터가 같은 clean commit에서
-수업 전에 한 번 준비한다. 학습자는 다음 다섯 파일을 순서대로 읽는다.
+PromptOptimizer 전체 실행은 여러 번의 실제 API 요청을 사용하므로 튜터가 수업 전에 한 번
+준비한다. 학습자는 명령부터 실행하지 말고 이번 정본의 결론을 먼저 읽는다.
+
+| 질문 | 2026-08-18 정본의 답 |
+| --- | --- |
+| 무엇이 문제였나? | 짧은 값만 요구한 기준 지시문이 설명형 질문에도 답을 지나치게 줄였다. |
+| Gemini가 무엇을 바꿨나? | 질문에 따라 서술형 문장과 세부 내용도 쓸 수 있게 한 문장을 완화했다. |
+| 모든 문제가 좋아졌나? | 아니다. 6건 중 3건은 상승, 1건은 동일, 2건은 하락했다. |
+| 무엇을 선택했나? | 평균이 더 높은 기준 지시문을 유지했다. |
+
+실제 실행은 Git `2102ba6`에서 NIM 45회와 Gemini 4회를 사용했다. 오류와 실제 모델 불일치는
+0건이었다. 아래 내용은 그 실행의 `candidate-prompt.md`, `validation.jsonl`, `summary.json`,
+`calls.jsonl`을 그대로 줄여 설명한 것이다.
+
+### 3-1. 기준 지시문에서 개선할 부분을 찾았다
+
+기준 지시문의 핵심 문장은 다음과 같았다.
+
+```text
+`answer`에는 질문이 요구한 값과 단위만 간결하게 씁니다.
+```
+
+개발 데이터(development)에는 값 하나를 묻는 질문뿐 아니라 추세, 의견과 여러 집단의 차이를
+묻는 질문도 있다. Gemini는 NIM 답의 낮은 점수와 이유를 읽고 다음처럼 진단했다.
+
+```text
+성공: JSON 구조, evidence와 답변 보류 형식은 대체로 지켜졌다.
+문제: "값과 단위만 간결하게"라는 문장이 설명형 질문의 필요한 맥락까지 줄이게 했다.
+제안: 질문이 설명을 요구하면 서술형 문장과 필요한 세부 내용도 허용한다.
+```
+
+이 내용은 `calls.jsonl`의 Gemini 원응답을 한국어로 줄인 것이다. Gemini는 이미지와
+validation·test 사례를 보지 않았다. 진단이 그럴듯해도 아직 개선 증거는 아니다.
+
+Gemini 호출 4회에는 `진단 → 새 지시문 제안`이 두 번 남아 있다. 두 번째 제안은 모든 수치와
+세부 통계를 빠짐없이 쓰도록 더 강하게 요구했다. 저장된 최종 후보는 그보다 작은 첫 번째
+변경을 사용했다. `calls.jsonl`만으로 내부 후보별 점수를 모두 재구성할 수는 없으므로,
+학습자는 저장된 `candidate-prompt.md`부터 별도 validation에서 확인한다.
+
+### 3-2. 실제 후보는 한 문장을 완화했다
+
+기준과 저장 후보의 중요한 차이는 다음 두 줄이다.
+
+```diff
+- `answer`에는 질문이 요구한 값과 단위만 간결하게 씁니다.
++ `answer`에는 질문이 요구한 형태에 맞춰 간결한 값과 단위,
++ 또는 필요한 서술형 문장과 세부 내용을 작성합니다.
+```
+
+JSON 6개 field, 근거 인용, `confidence` 범위와 답변 보류 규칙은 바꾸지 않았다. 즉 이번
+가설은 “설명형 질문에는 필요한 맥락을 허용하면 점수가 오른다”이다. 더 길게 쓰라는 지시가
+항상 더 좋은 답을 만든다는 뜻은 아니다.
+
+다음 명령으로 실제 전체 차이를 확인한다.
+
+```bash
+diff -u prompts/week-04-baseline.md "$OPTIMIZATION_DIR/candidate-prompt.md" || true
+```
+
+### 3-3. 검증 데이터 6건에서 좋아진 답과 새 실패가 함께 나왔다
+
+후보 생성에 쓰지 않은 validation 6건의 실제 결과는 다음과 같다. 점수는 JSON 구조가 유효한
+답에서 기준 답의 숫자 일치를 70%, 핵심 단어 겹침을 30%로 계산한다.
+채점 이유의 `missing`은 기준 답에 있지만 모델 답에서 놓친 값이다. `extra`는 기준 답에 없는
+추가 값이다.
+
+| `sample_id` | 기준 | 후보 | 변화 | 실제로 읽을 점 |
+| --- | ---: | ---: | ---: | --- |
+| `171` | 0.1077 | 0.0000 | -0.1077 | 후보의 `confidence=1.95`가 허용 범위를 벗어남 |
+| `699` | 0.6121 | 0.2681 | -0.3440 | 기준 답보다 G7 여섯 나라 수치를 더 넣어 extra 숫자가 늘어남 |
+| `6447` | 0.0808 | 0.1164 | +0.0356 | 문장 맥락은 늘었지만 불필요한 값도 그대로 남음 |
+| `2208` | 0.0000 | 0.0000 | 0.0000 | 후보가 답변 보류의 정해진 `answer`를 어김 |
+| `4327` | 0.3650 | 0.3833 | +0.0183 | 추세 설명이 조금 더 구체적이 됨 |
+| `5978` | 0.7004 | 0.8175 | +0.1171 | 질문의 `2050` 맥락을 답에 포함함 |
+| **평균** | **0.3110** | **0.2642** | **-0.0468** | **후보를 버리고 기준 유지** |
+
+평균만 보면 왜 바뀌었는지 알 수 없다. 아래 세 사례처럼 출력 문장을 함께 읽어야 한다.
+
+#### 좋아진 사례 — `5978`
+
+질문은 `Describe the projections of the California population in 2050.`이다.
+
+```text
+기준 answer:
+The 2014 projection for the total population is 49.8 million,
+and the 2007 projection is 59.5 million.
+
+후보 answer:
+The total population projections for California in 2050 are 49.8 million
+according to the 2014 projection and 59.5 million according to the 2007 projection.
+```
+
+후보는 같은 수치를 쓰면서 `California in 2050`을 명시했다. 기준 답에서 빠졌던 질문의 맥락이
+늘어 점수가 `0.7004 → 0.8175`로 올랐다. 이것은 변경 가설이 효과를 낸 사례다.
+
+#### 새로 나빠진 사례 — `699`
+
+질문은 `How is the income inequality among G7 countries?`이다.
+
+```text
+기준 answer:
+The U.S. has the highest level of income inequality among G7 countries
+with a Gini coefficient of 0.434.
+
+후보 answer:
+Among G7 countries, the U.S. has the highest level of income inequality
+with a Gini coefficient of 0.434, followed by the UK (0.392), Italy (0.373),
+Japan (0.363), Canada (0.352), Germany (0.351), and France (0.326).
+```
+
+후보는 기준 답이 강조한 최고·최저 비교보다 여섯 나라의 수치를 더 넣었다. 고정 채점기는
+이 값을 extra 숫자로 계산했고 점수는 `0.6121 → 0.2681`로 떨어졌다. 이 결과는 현재 채점
+규칙에서의 회귀다. 사람이 읽는 설명 품질까지 후보가 반드시 더 나쁘다는 뜻은 아니다.
+**더 길고 자세한 답이 자동으로 더 좋은 답이 되는 것도 아니다.**
+
+#### 출력 계약까지 깨진 사례 — `171`
+
+후보 답에는 다음 값이 들어 있었다.
+
+```json
+{"confidence":1.95,"abstained":false}
+```
+
+`confidence`는 0 이상 1 이하라는 규칙을 지켜야 한다. 답 문장이 더 자연스러워도 구조 검사를
+통과하지 못하면 이 사례의 점수는 0이다. 지시문에서 구조 규칙을 그대로 유지했더라도 모델의
+새 응답은 다시 검사해야 한다. 이번에 바꾼 문장은 `answer` 규칙이므로 그 변경이
+`confidence=1.95`를 직접 일으켰다고 단정하지 않는다. 다만 실제 후보 실행에서 생긴 회귀이므로
+선택할 때는 그대로 포함한다.
+
+### 3-4. 그래서 선택 지시문은 다시 기준선이 됐다
+
+후보는 일부 설명형 질문을 고쳤지만 더 큰 회귀와 출력 형식 위반도 만들었다. 따라서
+`summary.json`에는 다음 결론이 남았다.
+
+```json
+{
+  "baseline_mean": 0.311,
+  "candidate_mean": 0.26421666666666666,
+  "candidate_changed": true,
+  "selected": "baseline",
+  "selection_reason": "validation_not_improved"
+}
+```
+
+`selected-prompt.md`는 `candidate-prompt.md`가 아니라 기준 지시문과 같다. 자동 최적화의
+유효한 결론은 항상 “새 지시문 채택”이 아니다. 이번 결론은 **가설은 일부 사례에서 맞았지만
+전체 validation에서는 기준선을 이기지 못했다**이다.
+
+후보가 기준선과 완전히 같으면 반복 응답의 점수 차이를 개선으로 보지 않는다. 이때는 후보를
+다시 validation하지 않고 `candidate_identical`로 기준선을 유지한다.
+
+### 3-5. 저장 파일에서 위 설명을 직접 확인한다
+
+다음 다섯 파일은 “지시문 변화 → 실제 답 → 점수 → 선택”을 연결한다.
 
 ```bash
 test -f "$OPTIMIZATION_DIR/candidate-prompt.md"
@@ -120,11 +272,11 @@ test -f "$OPTIMIZATION_DIR/summary.json"
 test -f "$OPTIMIZATION_DIR/calls.jsonl"
 ```
 
-1. `candidate-prompt.md`: development 18건으로 만든 후보
-2. `validation.jsonl`: validation 6건의 기준선·후보 출력과 고정 점수
-3. `selected-prompt.md`: 실제로 선택된 기준선 또는 후보
-4. `summary.json`: 데이터·모델·지시문·채점기 hash, 평균, 선택과 실행 상태
-5. `calls.jsonl`: 실제 요청 모델·처리 모델, 원응답, token, 시간과 오류
+1. `candidate-prompt.md`: development 18건을 보고 만든 후보
+2. `validation.jsonl`: validation 6건의 기준·후보 출력과 점수 이유
+3. `selected-prompt.md`: 실제로 선택한 기준 지시문
+4. `summary.json`: 평균, 선택 이유와 데이터·모델·채점기 hash
+5. `calls.jsonl`: NIM 45회와 Gemini 4회의 원응답, token, 시간과 오류
 
 먼저 실행이 현재 입력과 연결되는지 확인한다.
 
@@ -135,44 +287,69 @@ rg -n '"(status|observed_status|git_sha|development_count|validation_count|test_
 rg -n 'week-03-cases.jsonl' "$OPTIMIZATION_DIR/summary.json"
 ```
 
-다음 조건을 모두 확인해야 평균을 비교한다.
+다음 조건을 모두 확인해야 결과 예시를 현재 실행의 근거로 사용한다.
 
 - `observed_status=complete`
 - development 18건, validation 6건, test 6건
 - `test_used_for_generation_or_selection=false`
-- `candidate_changed`와 `selection_reason`이 기록됨
+- `candidate_changed=true`, `selection_reason=validation_not_improved`
 - `provider_error_count=0`, `model_drift_count=0`
 - `target_provider`는 NIM Gemma, `optimizer_provider`는 Gemini Flash Lite
 - `artifact_sha256.week-03-cases.jsonl`과 현재 파일의 SHA-256이 같음
 - 요청 모델과 실제 처리 모델이 같음
 
-그다음 validation 사례를 읽는다.
+그다음 후보 차이, validation 12행과 최종 선택을 확인한다.
 
 ```bash
-sed -n '1,4p' "$OPTIMIZATION_DIR/validation.jsonl"
+diff -u prompts/week-04-baseline.md "$OPTIMIZATION_DIR/candidate-prompt.md" || true
+sed -n '1,12p' "$OPTIMIZATION_DIR/validation.jsonl"
 diff -u prompts/week-04-baseline.md "$OPTIMIZATION_DIR/selected-prompt.md" || true
 ```
 
-최적화 점수는 JSON 구조가 유효한 답에서 기준 답의 숫자 일치를 70%, 핵심 단어 겹침을 30%로
-계산한 학습용 고정 점수다. 설명 품질 전체를 증명하지 않는다. 실제로 다른 후보의 평균이
-기준선보다 높을 때만 후보를 선택한다. 후보가 기준선과 같으면 반복 모델 응답의 점수 차이를
-개선으로 보지 않고 `candidate_identical`로 기준선을 유지한다. `status=pass`는 실행 조건과
-파일이 완결됐다는 뜻이지 모든 답이 좋다는 뜻이 아니다.
+마지막 `diff`에 아무 내용도 나오지 않는 것이 이번 정본의 올바른 결과다. 선택 파일이 기준
+지시문과 같다는 뜻이다. `status=pass`는 실행과 파일이 완결됐다는 뜻이지 후보가 채택됐거나
+모든 답의 품질이 좋다는 뜻이 아니다.
 
-2026-08-18 실제 정본 생성에서는 Git `2102ba6`, NIM 45회와 Gemini 4회를 사용했다. 오류와
-실제 모델 불일치는 0건이었다. Validation 평균은 기준선 `0.311`, 후보 `0.264`여서
-`validation_not_improved`로 기준선을 유지했다. 이 수치는 수업 release가 바뀌면 다시
-확인하며, 학생 개인 점수나 배포 성능으로 일반화하지 않는다.
-
-다음 표를 `local-data/learning-progress.md`의 Week 4에 기록한다.
+이 수치는 수업 release가 바뀌면 다시 확인한다. 학생 개인 점수나 배포 성능으로 일반화하지
+않는다. 다음 표를 `local-data/learning-progress.md`의 Week 4에 기록한다.
 
 | 확인 항목 | 기록할 값 |
 | --- | --- |
+| 기준 지시문의 개선 가설 |  |
+| 후보에서 실제로 바뀐 문장 |  |
+| 점수가 오른 validation 사례와 이유 |  |
+| 점수가 떨어진 validation 사례와 이유 |  |
 | 기준선 validation 평균 |  |
 | 후보 validation 평균 |  |
-| 실제 선택 | `baseline` 또는 `candidate` |
-| 선택 이유 |  |
-| 가장 낮은 validation 사례와 이유 |  |
+| 실제 선택과 선택 이유 |  |
+
+### 3-6. 한 개선 사례와 한 회귀 사례를 끝까지 팔로업한다
+
+먼저 위 예시의 원본 두 쌍을 찾는다.
+
+```bash
+rg -n '"sample_id": "5978"' \
+  local-data/opencqa/week-03-cases.jsonl "$OPTIMIZATION_DIR/validation.jsonl"
+rg -n '"sample_id": "699"' \
+  local-data/opencqa/week-03-cases.jsonl "$OPTIMIZATION_DIR/validation.jsonl"
+```
+
+각 `sample_id`에는 질문·기준 답 한 행과 기준·후보 모델 출력 두 행이 연결된다. 원응답을
+읽고 다음 표를 채운다. 점수만 옮기지 말고 모델의 `answer`에서 실제로 추가되거나 빠진 말을
+적는다.
+
+| 팔로업 항목 | 개선 사례 `5978` | 회귀 사례 `699` |
+| --- | --- | --- |
+| 질문이 요구한 것 |  |  |
+| 기준 모델의 `answer` |  |  |
+| 후보 모델의 `answer` |  |  |
+| 후보에서 추가·삭제된 내용 |  |  |
+| 기준 → 후보 점수 |  |  |
+| 채점기의 이유 |  |  |
+| 처음 세운 개선 가설과 맞는가 |  |  |
+
+마지막으로 두 사례만 보고 후보를 채택하지 않는다. 위 표는 변화 원인을 이해하는 활동이고,
+선택은 validation 6건 전체의 사전 규칙을 따른다.
 
 ## 4. 이미지 변형을 직접 보고 판정하기
 
@@ -293,6 +470,8 @@ API key, `.env`, OpenCQA 원본과 튜터 정본은 제출하지 않는다.
 - development·validation·공개 test의 역할을 설명했다.
 - 현재 `week-03-cases.jsonl`과 저장 최적화 결과의 hash를 확인했다.
 - validation 평균이 높지 않으면 기준선을 유지하는 코드를 확인했다.
+- 기준과 후보 지시문의 실제 변경 문장을 설명했다.
+- 개선 사례와 회귀 사례에서 모델 답·점수·채점 이유를 같은 `sample_id`로 연결했다.
 - 원본과 변형 네 개를 직접 보고 근거 보존·훼손을 판정했다.
 - 저장 VLM 응답 5개를 다시 채점하고 실패 이유를 한 사례에서 연결했다.
 - `invalid_variant`, 품질 `fail`, 원본 품질 부족·provider 문제의 `inconclusive`를 구분했다.
