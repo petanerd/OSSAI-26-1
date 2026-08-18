@@ -1,0 +1,20 @@
+optimizer:
+  iterations: 2
+  minibatch_size: 4
+  pareto_size: 3
+  patience: 2
+  random_seed: 42
+
+robustness:
+  - variant_id: rotate-2
+    transformation: rotate_2
+    intended_behavior: invariance
+  - variant_id: jpeg-60
+    transformation: jpeg_60
+    intended_behavior: invariance
+  - variant_id: crop-left
+    transformation: crop_left
+    intended_behavior: graceful_degradation
+  - variant_id: occlude-answer
+    transformation: occlude_answer
+    intended_behavior: graceful_degradation

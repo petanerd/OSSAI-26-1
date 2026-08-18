@@ -4,7 +4,7 @@
 만드는 주요 명령만 정리했다. 모든 명령은 `src/verifiable_ai_workflow/`의 공통 구현을 호출하며,
 별도 평가 엔진은 두지 않는다.
 
-## Week 1–3 주요 실행 파일
+## Week 1–4 주요 실행 파일
 
 | 순서 | 실행 파일 | 하는 일 | 주요 결과 |
 | ---: | --- | --- | --- |
@@ -25,6 +25,10 @@
 | 15 | `inspect_judge_pair.py` | 개인 후보 한 쌍을 출처·기대 답 없이 확인하고 사람 사전 label 검증 | 터미널 출력 |
 | 16 | `run_open_cqa_judge.py` | Gemini 3.5 Flash Lite로 개인 30쌍 또는 대표 1쌍을 두 trial·두 순서로 판단 | Judge 호출·60 trial·요약 |
 | 17 | `compare_open_cqa_judge.py` | Judge 판단을 baseline·improved 출처, 잠근 사람 label과 연결하고 충돌 계산 | 승·무승부·review·순서·반복 비교 |
+| 18 | `optimize_open_cqa_prompt.py` | NIM Gemma를 타깃으로 development 답을 만들고 Gemini GEPA 검토로 후보를 생성한 뒤 validation으로 선택 | 역할별 호출, 후보·선택 지시문, 검증 결과 |
+| 19 | `generate_image_variants.py` | OpenCQA 첫 차트의 이미지 변형 생성 | 변형 이미지·사람 검토표 |
+| 20 | `run_image_robustness.py` | 선택 지시문으로 원본 1개와 변형 4개 실행 | 구조화 답·호출 요약 |
+| 21 | `evaluate_image_robustness.py` | 근거 보존·훼손을 서로 다른 규칙으로 판정 | 견고성 결과·검증 manifest |
 
 `inspect_*.py`는 사람 판단 전에 후보의 prompt 출처·기대 답·Judge 결과를 숨긴다. 각 학습자는
 Week 2 자기 prompt 40건과 Week 3 NIM 답 60개·Gemini Judge 30쌍을 실행한다. 강의자의 별도
@@ -65,12 +69,19 @@ src/verifiable_ai_workflow/
 ├── workflow/        질문·페이지 이미지·모델 호출 연결
 ├── evaluation/      고정 규칙 점수 계산과 DeepEval 저장
 ├── open_cqa_candidates.py  Gemma 후보 생성·익명 배치·후보 세트 hash
+├── prompt_optimization.py  GEPA 입력·고정 feedback·validation 선택
+├── image_robustness.py     이미지 변형·사람 검토·견고성 판정
+├── course_live.py          주차별 LiteLLM 예산·모델 설정 연결
 └── judge_*.py      Gemini Judge 호출, 지표와 순서·반복 충돌 계산
 ```
 
 작업 모델에는 질문·지시문(prompt)·페이지 JPEG만 보낸다. OpenCQA 사람이 쓴 기대 답은 보내지
 않는다. Judge 모델에는 질문·페이지 JPEG·기대 답·익명 Gemma 후보 A/B와 고정 rubric을 보낸다.
 PDF 추출 문장은 원본·라벨을 점검할 때만 쓰며, 모델 입력이나 채점에는 넣지 않는다.
+
+Week 4의 Gemini 최적화 검토에는 원본 지시문, 질문, 기대 답, NIM 출력과 고정 점수·이유를
+보낸다. OpenCQA JPEG와 사람의 이미지 검토표는 보내지 않는다. `calls.jsonl`은 NIM 타깃을
+`provider_role=target`, Gemini 검토를 `provider_role=optimizer`로 구분한다.
 
 ## 한 사례의 실제 흐름
 
@@ -115,6 +126,9 @@ Week 3에서는 이 흐름을 다음처럼 확장한다.
 | `judge_model.py` | Gemini 3.5 Flash Lite 실제 호출을 DeepEval Judge 인터페이스에 연결한다. | Week 3 |
 | `judge_metrics.py` | 이미지·질문·기대 답·Gemma 후보를 과정의 고정 4단계 기준으로 비교한다. | Week 3 |
 | `judge_comparison.py` | 잠근 사람 label·후보 출처·Judge 결과를 연결해 baseline·improved 승패와 순서·반복 충돌을 계산한다. | Week 3 |
+| `course_live.py` | Week 4 실제 호출이 기존 LiteLLM 예산·모델 검사를 재사용하게 한다. | Week 4 |
+| `prompt_optimization.py` | OpenCQA 18/6/6 분할, 고정 feedback과 GEPA 후보 선택을 연결한다. | Week 4 |
+| `image_robustness.py` | 원본·변형 hash와 사람 근거 판정을 확인하고 견고성을 계산한다. | Week 4 |
 
 이 기능들은 학습자가 직접 다시 구현하지 않는다. 해당 주차에서는 결과 파일을 보고 기능이
 지켜졌는지만 확인한다.

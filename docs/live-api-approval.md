@@ -190,9 +190,27 @@ OpenCQA JPEG·질문·기대 답·익명 Gemma 출력의 Google 전송은 2026-0
 지우거나 같은 폴더에 이어 쓰지 않고, `not_run`이면 요청하지 않은 사유를 기록한다. 한 사람의
 label과 Judge가 일치했다는 이유만으로 `human_calibrated`나 blocking 품질 증거라고 부르지 않는다.
 
-## Week 4–6에서 새 외부 전송을 추가할 때
+## Week 4 외부 전송 명세
 
-현재 Week 1–3 설정은 Week 4–6의 새 API 전송을 승인하지 않는다. 이후 코드가 이미지,
+Week 4 최적화는 NIM Gemma를 타깃 모델로, Gemini Flash Lite를 최적화 검토 모델로 사용한다.
+아래 코드와 상한은 실행 안전장치이며 실제 호출 승인은 아니다. 두 provider의 데이터 전송,
+모델·가격·계정 할당량과 clean commit을 사람이 확인한 뒤에만 실행한다.
+
+| 실행·역할 | 보내는 자료 | 정확한 상한 |
+| --- | --- | --- |
+| PromptOptimizer의 NIM Gemma 타깃 호출 | OpenCQA JPEG·질문·타깃 지시문 | 요청·attempt 45/45, 입력 900,000 token, 출력 22,500 token, $0.01, 7,200초, 재시도 0 |
+| PromptOptimizer의 Gemini 검토 호출 | 지시문·질문·사람 기대 답·NIM 출력·고정 점수와 이유 | 요청 4회, attempt 최대 8회, 입력 40,000 token, 출력 16,000 token, $0.01, 7,200초, 요청당 재시도 1회 |
+| `scripts/run_image_robustness.py`의 NIM Gemma | OpenCQA 원본·변형 이미지, 질문, 선택 지시문 | 요청·attempt 5/5, 입력 100,000 token, 출력 2,500 token, $0.01, 900초, 재시도 0 |
+
+모두 `structured_output=json_schema`를 사용한다. NIM 차트 답변은 요청당 출력 500 token,
+Gemini의 text-only GEPA 진단·재작성은 2,000 token까지 허용한다. 두 provider의 budget과
+`provider_role`을 따로 기록한다. Gemini에는 OpenCQA 이미지와 사람의 `variant-review.csv`를
+보내지 않는다. API key도 보내지 않는다. 원응답·실제 처리 모델·token·시간·오류는
+`calls.jsonl`과 `summary.json`에 보존한다.
+
+## Week 5–6에서 새 외부 전송을 추가할 때
+
+현재 승인 범위는 Week 5–6의 새 API 전송을 승인하지 않는다. 이후 코드가 이미지,
 질문, 모델 응답이나 도구 입력을 외부 서비스에 보내게 될 때만 다음 확인표를 작성한다.
 
 1. 실제 실행할 script와 config 경로
