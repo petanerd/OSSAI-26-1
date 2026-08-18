@@ -141,6 +141,21 @@ def test_optimizer_separates_nim_target_and_gemini_review() -> None:
     assert optimizer.provider.model == "gemini/gemini-3.5-flash-lite"
 
 
+def test_identical_candidate_cannot_win_from_repeated_model_variation() -> None:
+    baseline = Prompt(text_template="same {question}")
+    candidate = Prompt(text_template="same {question}")
+
+    selected, prompt, reason = optimize_open_cqa_prompt._select_prompt(
+        baseline, candidate, baseline_mean=0.1, candidate_mean=0.9
+    )
+
+    assert (selected, prompt, reason) == (
+        "baseline",
+        baseline,
+        "candidate_identical",
+    )
+
+
 @pytest.mark.parametrize(
     ("catalog_date", "pricing_date"),
     [

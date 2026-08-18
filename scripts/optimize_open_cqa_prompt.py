@@ -82,6 +82,19 @@ def _clean_git() -> str:
     ).stdout.strip()
 
 
+def _select_prompt(
+    baseline: Prompt,
+    candidate: Prompt,
+    baseline_mean: float,
+    candidate_mean: float | None,
+) -> tuple[str, Prompt, str]:
+    if (candidate.text_template or "") == (baseline.text_template or ""):
+        return "baseline", baseline, "candidate_identical"
+    if candidate_mean is not None and candidate_mean > baseline_mean:
+        return "candidate", candidate, "validation_improved"
+    return "baseline", baseline, "validation_not_improved"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--live-optimize", action="store_true")
@@ -291,8 +304,14 @@ def main() -> int:
     metric = OpenCqaDeterministicMetric()
     records: list[dict] = []
     try:
+        candidate_changed = (candidate.text_template or "") != (
+            baseline.text_template or ""
+        )
         for golden in splits["validation"]:
-            for name, prompt in (("baseline", baseline), ("candidate", candidate)):
+            prompts = [("baseline", baseline)]
+            if candidate_changed:
+                prompts.append(("candidate", candidate))
+            for name, prompt in prompts:
                 output = callback(prompt, golden)
                 records.append(
                     {
@@ -312,9 +331,11 @@ def main() -> int:
         values = [item["score"] for item in records if item["prompt"] == name]
         return sum(values) / len(values)
 
-    baseline_mean, candidate_mean = mean("baseline"), mean("candidate")
-    selected = "candidate" if candidate_mean > baseline_mean else "baseline"
-    selected_prompt = candidate if selected == "candidate" else baseline
+    baseline_mean = mean("baseline")
+    candidate_mean = mean("candidate") if candidate_changed else None
+    selected, selected_prompt, selection_reason = _select_prompt(
+        baseline, candidate, baseline_mean, candidate_mean
+    )
     selected_path = args.output / "selected-prompt.md"
     selected_path.write_text(selected_prompt.text_template or "", encoding="utf-8")
     target_evidence = provider_evidence(
@@ -350,7 +371,9 @@ def main() -> int:
         "test_used_for_generation_or_selection": False,
         "baseline_mean": baseline_mean,
         "candidate_mean": candidate_mean,
+        "candidate_changed": candidate_changed,
         "selected": selected,
+        "selection_reason": selection_reason,
         "selected_prompt_sha256": _sha256(selected_path),
         "target_provider": target_evidence,
         "optimizer_provider": optimizer_evidence,
@@ -363,8 +386,9 @@ def main() -> int:
         json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     print(
-        f"validation 평균 baseline={baseline_mean:.3f}, candidate={candidate_mean:.3f}, "
-        f"선택={summary['selected']}"
+        f"validation 평균 baseline={baseline_mean:.3f}, "
+        f"candidate={candidate_mean if candidate_mean is not None else 'not_run'}, "
+        f"선택={summary['selected']} ({selection_reason})"
     )
     return 0 if summary["status"] == "pass" else 2
 
