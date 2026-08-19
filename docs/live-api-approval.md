@@ -201,7 +201,7 @@ Week 4에서는 NIM Gemma가 차트에 답하고 Gemini Flash Lite가 지시문�
 | PromptOptimizer의 NIM Gemma 타깃 호출 | OpenCQA JPEG·질문·타깃 지시문 | 요청·attempt 45/45, 입력 900,000 token, 출력 22,500 token, $0.01, 7,200초, 재시도 0 |
 | PromptOptimizer의 Gemini 검토 호출 | 지시문·질문·사람 기대 답·NIM 출력·고정 점수와 이유 | 요청 4회, attempt 최대 8회, 입력 40,000 token, 출력 16,000 token, $0.01, 7,200초, 요청당 재시도 1회 |
 | `scripts/run_image_robustness.py`의 NIM Gemma | OpenCQA 원본·변형 이미지, 질문, 선택 지시문 | 요청·attempt 5/5, 입력 100,000 token, 출력 2,500 token, $0.01, 900초, 재시도 0 |
-| 수업 중 2건 시연의 NIM Gemma | 개발 사례 JPEG·질문·처음 지시문 | 요청·attempt 4/4, 입력 80,000 token, 출력 2,000 token, $0.01, 900초, 재시도 0 |
+| 수업 중 2건 시연의 NIM Gemma | 개발 사례 JPEG·질문·처음 지시문 | 요청·attempt 5/5, 입력 100,000 token, 출력 2,500 token, $0.01, 900초, 재시도 0 |
 | 수업 중 2건 시연의 Gemini | 지시문·질문·사람 기대 답·NIM 출력·고정 점수와 이유 | 요청 2회, attempt 최대 4회, 입력 20,000 token, 출력 8,000 token, $0.01, 900초, 요청당 재시도 1회 |
 
 세 실행 모두 `structured_output=json_schema`로 답의 필드와 자료형을 제한한다. NIM의 차트

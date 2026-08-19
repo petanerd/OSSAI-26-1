@@ -49,10 +49,10 @@ OPTIMIZER_APPROVED_CAPS = LiveBudgetCaps(
     max_wall_seconds=7_200,
 )
 DEMO_TARGET_APPROVED_CAPS = LiveBudgetCaps(
-    max_requests=4,
-    max_attempts=4,
-    max_input_tokens=80_000,
-    max_output_tokens=2_000,
+    max_requests=5,
+    max_attempts=5,
+    max_input_tokens=100_000,
+    max_output_tokens=2_500,
     max_cost_usd=0.01,
     max_wall_seconds=900,
 )
