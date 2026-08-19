@@ -19,7 +19,7 @@
 처음 실습한다면 [Week 1 실습](docs/week-01-lab.md),
 [Week 2 실습](docs/week-02-lab.md), [Week 3 실습](docs/week-03-lab.md),
 [Week 4 실습](docs/week-04-lab.md) 순서로 진행한다.
-낯선 용어나 도구는 [수업 도구·채점기·용어](docs/terms-tools-and-scoring.md)에서 확인할 수 있다.
+낯선 용어나 도구는 [수업 도구·채점기·용어](docs/terms-tools-and-scoring.md)에서 확인한다.
 
 ## 수업에서 먼저 보는 한 사례
 
@@ -123,7 +123,7 @@ Week 2 개인 prompt는 `local-data/week-02-students/<alias>/prompt.md`에 두�
 | Week 4 GEPA 검토 | Google AI Studio | `gemini/gemini-3.5-flash-lite` |
 
 Gemini 3.5 Flash Lite는 현재 잠긴 LiteLLM adapter로 요청 모델·실제 처리 모델과 구조화 출력을
-확인할 수 있어 Week 2·3 Judge와 Week 4 지시문 검토에 쓴다. 2026-08-17에 OpenCQA JPEG·질문·
+확인하므로 Week 2·3 Judge와 Week 4 지시문 검토에 쓴다. 2026-08-17에 OpenCQA JPEG·질문·
 기대 답·Gemma 실제 출력을 Google로 보내는 범위를 승인했다. Week 4 검토에는 JPEG 대신
 지시문·질문·기대 답·NIM 출력·고정 점수와 이유를 보낸다. Free Tier 자료가 제품 개선에
 사용될 수 있다는 조건도 실행 전에 다시 확인한다.
