@@ -48,8 +48,11 @@ def _git_sha() -> str:
     ).stdout.strip()
 
 
-def _image_message(path: Path, question: str) -> dict:
-    encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+def _image_message(path: Path, question: str, expected_sha256: str) -> dict:
+    image_bytes = path.read_bytes()
+    if hashlib.sha256(image_bytes).hexdigest() != expected_sha256:
+        raise ValueError("전송할 이미지 bytes가 manifest SHA-256과 다릅니다")
+    encoded = base64.b64encode(image_bytes).decode("ascii")
     suffix = "jpeg" if path.suffix.lower() in {".jpg", ".jpeg"} else "png"
     return {
         "role": "user",
@@ -171,8 +174,8 @@ def main() -> int:
         "variants.jsonl",
         "variant-review.csv",
     )
-    images = [("original", original_image)] + [
-        (item.variant_id, PROJECT_ROOT / item.image_path) for item in variants
+    images = [("original", original_image, case["original_image_sha256"])] + [
+        (item.variant_id, PROJECT_ROOT / item.image_path, item.image_sha256) for item in variants
     ]
     prompt_bytes = args.prompt.read_bytes()
     prompt_sha256 = hashlib.sha256(prompt_bytes).hexdigest()
@@ -203,12 +206,12 @@ def main() -> int:
     invalid_output_count = 0
     run_error: Exception | None = None
     try:
-        for variant_id, image_path in images:
+        for variant_id, image_path, image_sha256 in images:
             raw = provider.generate(
                 f"{case['sample_id']}:{variant_id}",
                 [
                     {"role": "system", "content": instruction},
-                    _image_message(image_path, case["question"]),
+                    _image_message(image_path, case["question"], image_sha256),
                 ],
             )
             try:
@@ -231,10 +234,7 @@ def main() -> int:
                     },
                 }
             with responses_path.open("a", encoding="utf-8") as handle:
-                handle.write(
-                    json.dumps(response_record, ensure_ascii=False)
-                    + "\n"
-                )
+                handle.write(json.dumps(response_record, ensure_ascii=False) + "\n")
             record_count += 1
     except Exception as exc:
         run_error = exc
@@ -251,9 +251,14 @@ def main() -> int:
     input_changed = (
         (_sha256(args.prompt) if args.prompt.is_file() else None) != prompt_sha256
         or any(artifact_hashes[name] != source_hashes[name] for name in source_names)
+        or any(
+            not image_path.is_file() or _sha256(image_path) != image_sha256
+            for _, image_path, image_sha256 in images
+        )
     )
     artifact_hashes.update({name: source_hashes[name] for name in source_names})
     complete = record_count == 5 and run_error is None and not input_changed
+    budget_summary = provider.budget.summary()
     summary = {
         "status": (
             "inconclusive"
@@ -266,7 +271,11 @@ def main() -> int:
             else "pass"
         ),
         "observed_status": (
-            "complete" if complete else "partial" if record_count else "not_run"
+            "complete"
+            if complete
+            else "partial"
+            if budget_summary.get("attempt_count", 0)
+            else "not_run"
         ),
         "evidence_kind": "live_quality",
         "git_sha": git_sha,
@@ -274,9 +283,7 @@ def main() -> int:
         "billing_basis": settings.provider.billing_basis,
         "structured_output": provider.structured_output,
         "prompt_sha256": prompt_sha256,
-        "schema_sha256": _sha256(
-            PROJECT_ROOT / "src/verifiable_ai_workflow/schemas/models.py"
-        ),
+        "schema_sha256": _sha256(PROJECT_ROOT / "src/verifiable_ai_workflow/schemas/models.py"),
         "pricing_source_url": settings.provider.pricing_source_url,
         "pricing_verified_on": args.pricing_verified_on.isoformat(),
         "input_cost_per_token_usd": settings.provider.input_cost_per_token_usd,
@@ -297,7 +304,7 @@ def main() -> int:
         "record_count": record_count,
         "target_count": 5,
         "invalid_output_count": invalid_output_count,
-        "target_variant_ids": [variant_id for variant_id, _ in images],
+        "target_variant_ids": [variant_id for variant_id, _, _ in images],
         "completed_variant_ids": [
             json.loads(line)["variant_id"]
             for line in responses_path.read_text(encoding="utf-8").splitlines()
@@ -305,7 +312,7 @@ def main() -> int:
         ]
         if responses_path.is_file()
         else [],
-        "budget": provider.budget.summary(),
+        "budget": budget_summary,
         "input_changed_during_run": input_changed,
         "artifact_sha256": artifact_hashes,
     }

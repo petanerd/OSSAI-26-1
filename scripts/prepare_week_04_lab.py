@@ -10,6 +10,7 @@ import re
 import shutil
 from pathlib import Path
 
+from verifiable_ai_workflow.image_robustness import VariantArtifact, load_reviews
 from verifiable_ai_workflow.open_cqa_candidates import load_open_cqa_cases
 from verifiable_ai_workflow.prompt_optimization import split_goldens
 from verifiable_ai_workflow.week4_materials import load_week4_class_materials
@@ -28,6 +29,10 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _stored_hashes_match(stored: dict, paths: dict[str, Path]) -> bool:
+    return bool(stored) and all(stored.get(name) == _sha256(path) for name, path in paths.items())
+
+
 def _require_paths(paths: list[Path], project_root: Path) -> None:
     missing = [str(path.relative_to(project_root)) for path in paths if not path.exists()]
     if missing:
@@ -42,6 +47,7 @@ def prepare(
 ) -> dict[str, object]:
     materials = load_week4_class_materials(project_root)
     cases_path = project_root / "local-data/opencqa/week-03-cases.jsonl"
+    variant_root = project_root / "local-data/opencqa/week-04-variants"
     optimization = materials.prompt_optimization_dir
     robustness = materials.image_response_dir
     required = [
@@ -50,6 +56,9 @@ def prepare(
         project_root / "prompts/week-04-baseline.md",
         project_root / "configs/nvidia-nim-gemma4.yaml",
         project_root / "configs/google-gemini-3.5-flash-lite-judge.yaml",
+        variant_root / "case.json",
+        variant_root / "variants.jsonl",
+        variant_root / "variant-review.csv",
         *(
             optimization / name
             for name in (
@@ -63,6 +72,7 @@ def prepare(
         *(
             robustness / name
             for name in (
+                "calls.jsonl",
                 "responses.jsonl",
                 "summary.json",
                 "evaluation.json",
@@ -72,10 +82,51 @@ def prepare(
     ]
     _require_paths(required, project_root)
 
+    variant_case = json.loads((variant_root / "case.json").read_text(encoding="utf-8"))
+    variants = [
+        VariantArtifact.model_validate_json(line)
+        for line in (variant_root / "variants.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    try:
+        load_reviews(
+            variant_root / "variant-review.csv",
+            variants,
+            project_root=project_root,
+            source_path=project_root / variant_case["original_image"],
+        )
+    except (OSError, ValueError) as exc:
+        raise SystemExit(f"공통 이미지 변형 확인 실패: {exc}") from exc
+
     splits = split_goldens(load_open_cqa_cases(cases_path))
     counts = {name: len(rows) for name, rows in splits.items()}
     summary = json.loads((optimization / "summary.json").read_text(encoding="utf-8"))
     robustness_summary = json.loads((robustness / "summary.json").read_text(encoding="utf-8"))
+    evaluation_manifest = json.loads(
+        (robustness / "evaluation-manifest.json").read_text(encoding="utf-8")
+    )
+    optimization_paths = {
+        "calls.jsonl": optimization / "calls.jsonl",
+        "validation.jsonl": optimization / "validation.jsonl",
+        "candidate-prompt.md": optimization / "candidate-prompt.md",
+        "selected-prompt.md": optimization / "selected-prompt.md",
+        "week-03-cases.jsonl": cases_path,
+    }
+    robustness_paths = {
+        "calls.jsonl": robustness / "calls.jsonl",
+        "responses.jsonl": robustness / "responses.jsonl",
+        "week-03-cases.jsonl": cases_path,
+        "case.json": variant_root / "case.json",
+        "variants.jsonl": variant_root / "variants.jsonl",
+        "variant-review.csv": variant_root / "variant-review.csv",
+    }
+    evaluation_paths = {
+        "evaluation_sha256": robustness / "evaluation.json",
+        "responses_sha256": robustness / "responses.jsonl",
+        "case_sha256": variant_root / "case.json",
+        "variants_sha256": variant_root / "variants.jsonl",
+        "reviews_sha256": variant_root / "variant-review.csv",
+    }
     expected_input_hash = summary.get("artifact_sha256", {}).get("week-03-cases.jsonl")
     source_git_sha = summary.get("git_sha")
     target_budget = summary.get("target_provider", {}).get("budget", {})
@@ -86,12 +137,18 @@ def prepare(
         optimizer_budget.get("request_count"),
         optimizer_budget.get("attempt_count"),
     )
-    same_git_sha = bool(source_git_sha) and source_git_sha == robustness_summary.get(
-        "git_sha"
-    )
+    same_git_sha = bool(source_git_sha) and source_git_sha == robustness_summary.get("git_sha")
     checks = {
         "지시문 실행 완료": summary.get("observed_status") == "complete",
+        "지시문 결과 파일 SHA-256 일치": _stored_hashes_match(
+            summary.get("artifact_sha256", {}), optimization_paths
+        ),
         "두 저장 결과의 코드 버전 일치": same_git_sha,
+        "두 저장 결과의 선택 지시문 일치": summary.get("selected_prompt_sha256")
+        == summary.get("artifact_sha256", {}).get("selected-prompt.md")
+        == robustness_summary.get("prompt_sha256"),
+        "두 저장 결과의 입력 일치": summary.get("artifact_sha256", {}).get("week-03-cases.jsonl")
+        == robustness_summary.get("artifact_sha256", {}).get("week-03-cases.jsonl"),
         "데이터 분할 18/6/6": counts
         == {
             "development": 18,
@@ -107,7 +164,15 @@ def prepare(
         and 0 < call_counts[3] <= 8,
         "지시문 실행 오류·모델 불일치 0건": summary.get("provider_error_count") == 0
         and summary.get("model_drift_count") == 0,
-        "이미지 응답 5개 완료": robustness_summary.get("record_count") == 5,
+        "이미지 응답 5개 완료": robustness_summary.get("observed_status") == "complete"
+        and robustness_summary.get("record_count") == 5
+        and robustness_summary.get("target_count") == 5
+        and robustness_summary.get("invalid_output_count") == 0,
+        "이미지 결과 파일 SHA-256 일치": _stored_hashes_match(
+            robustness_summary.get("artifact_sha256", {}), robustness_paths
+        )
+        and _stored_hashes_match(evaluation_manifest, evaluation_paths)
+        and evaluation_manifest.get("source_git_sha") == robustness_summary.get("git_sha"),
         "이미지 실행 오류·모델 불일치 0건": robustness_summary.get("provider_error_count") == 0
         and robustness_summary.get("model_drift_count") == 0,
     }

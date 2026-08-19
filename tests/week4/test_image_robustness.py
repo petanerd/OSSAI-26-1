@@ -28,9 +28,7 @@ def _answer(value: str = "47%", *, abstained: bool = False) -> StructuredAnswer:
     return StructuredAnswer(
         answer="답변 보류" if abstained else value,
         evidence=(
-            []
-            if abstained
-            else [Evidence(evidence_id="chart#page=1", quote=value, page_number=1)]
+            [] if abstained else [Evidence(evidence_id="chart#page=1", quote=value, page_number=1)]
         ),
         confidence=0,
         abstained=abstained,
@@ -56,9 +54,7 @@ def test_generate_four_variants_and_score_by_human_review(
     assert len({item.image_sha256 for item in artifacts}) == 4
     assert all(not Path(item.image_path).is_absolute() for item in artifacts)
     preserved = next(item for item in artifacts if item.intended_behavior == "invariance")
-    destroyed = next(
-        item for item in artifacts if item.intended_behavior == "graceful_degradation"
-    )
+    destroyed = next(item for item in artifacts if item.intended_behavior == "graceful_degradation")
     assert score_variant(preserved, "preserved", "47%", _answer(), _answer()).status == "passed"
     destroyed_result = score_variant(
         destroyed,
@@ -101,6 +97,24 @@ def test_student_variants_must_match_images_used_for_saved_responses() -> None:
         [artifact],
         {"sample_id": "884"},
     )
+    for update in (
+        {"sample_id": "885"},
+        {"intended_behavior": "graceful_degradation"},
+        {"source_sha256": "c" * 64},
+    ):
+        assert not evaluate_image_robustness._same_variant_inputs(
+            [artifact.model_copy(update=update)],
+            {"sample_id": "884"},
+            [artifact],
+            {"sample_id": "884"},
+        )
+
+
+def test_image_message_rejects_changed_bytes(tmp_path: Path) -> None:
+    image = _image(tmp_path / "image.png")
+
+    with pytest.raises(ValueError, match="SHA-256"):
+        run_image_robustness._image_message(image, "question", "0" * 64)
 
 
 def test_degradation_variants_remove_the_left_answer_region(
@@ -155,9 +169,7 @@ def test_low_quality_original_does_not_hide_safe_abstention(tmp_path: Path) -> N
         project_root=tmp_path,
     )
     preserved = next(item for item in artifacts if item.intended_behavior == "invariance")
-    destroyed = next(
-        item for item in artifacts if item.intended_behavior == "graceful_degradation"
-    )
+    destroyed = next(item for item in artifacts if item.intended_behavior == "graceful_degradation")
     low_quality = _answer("10%")
 
     assert (
@@ -480,9 +492,7 @@ def test_evaluation_manifest_binds_inputs_and_scores(monkeypatch, tmp_path) -> N
     )
 
     assert evaluate_image_robustness.main() == 0
-    manifest = json.loads(
-        (tmp_path / "evaluation-manifest.json").read_text(encoding="utf-8")
-    )
+    manifest = json.loads((tmp_path / "evaluation-manifest.json").read_text(encoding="utf-8"))
     assert manifest["evaluation_sha256"] == hashlib.sha256(output.read_bytes()).hexdigest()
     assert manifest["responses_sha256"] == hashlib.sha256(responses.read_bytes()).hexdigest()
     assert manifest["source_git_sha"] == "a" * 40
@@ -492,6 +502,85 @@ def test_evaluation_manifest_binds_inputs_and_scores(monkeypatch, tmp_path) -> N
 
     reviews.write_text("changed\n", encoding="utf-8")
     with pytest.raises(SystemExit, match="SHA-256"):
+        evaluate_image_robustness.main()
+
+
+def test_student_evaluation_rejects_changed_saved_responses(monkeypatch, tmp_path) -> None:
+    source = _image(tmp_path / "source.png")
+    artifacts = generate_variants(
+        source_path=source,
+        sample_id="884",
+        output_dir=tmp_path / "generated",
+        config_path=Path(__file__).parents[2] / "configs/week-04.yaml",
+        project_root=tmp_path,
+    )
+    canonical = tmp_path / "canonical"
+    student = tmp_path / "local-data/week-04-students/minsu/variants"
+    canonical.mkdir()
+    student.mkdir(parents=True)
+    variants_text = "".join(item.model_dump_json() + "\n" for item in artifacts)
+    case_text = json.dumps(
+        {"reference_answer": "47%", "original_image": str(source.relative_to(tmp_path))}
+    )
+    for root in (canonical, student):
+        (root / "variants.jsonl").write_text(variants_text, encoding="utf-8")
+        (root / "case.json").write_text(case_text, encoding="utf-8")
+    _write_reviews(student / "variant-review.csv", artifacts)
+    responses = tmp_path / "saved/responses.jsonl"
+    responses.parent.mkdir()
+    responses.write_text(
+        "".join(
+            json.dumps(
+                {
+                    "variant_id": variant_id,
+                    "output": _answer().model_dump(mode="json"),
+                    "parse_error": None,
+                }
+            )
+            + "\n"
+            for variant_id in ["original", *(item.variant_id for item in artifacts)]
+        ),
+        encoding="utf-8",
+    )
+    (responses.parent / "summary.json").write_text(
+        json.dumps(
+            {
+                "git_sha": "a" * 40,
+                "artifact_sha256": {
+                    "responses.jsonl": hashlib.sha256(responses.read_bytes()).hexdigest(),
+                    "case.json": hashlib.sha256((canonical / "case.json").read_bytes()).hexdigest(),
+                    "variants.jsonl": hashlib.sha256(
+                        (canonical / "variants.jsonl").read_bytes()
+                    ).hexdigest(),
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    scorer = tmp_path / "src/verifiable_ai_workflow/image_robustness.py"
+    scorer.parent.mkdir(parents=True)
+    scorer.write_text("# scorer\n", encoding="utf-8")
+    metric = tmp_path / "src/verifiable_ai_workflow/prompt_optimization.py"
+    metric.write_text("# metric\n", encoding="utf-8")
+    schema = tmp_path / "src/verifiable_ai_workflow/schemas/models.py"
+    schema.parent.mkdir(parents=True)
+    schema.write_text("# schema\n", encoding="utf-8")
+    monkeypatch.setattr(evaluate_image_robustness, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(evaluate_image_robustness, "DEFAULT_ROOT", canonical)
+    monkeypatch.setattr(
+        evaluate_image_robustness,
+        "load_week4_class_materials",
+        lambda project_root: SimpleNamespace(label="test", image_response_dir=responses.parent),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["evaluate_image_robustness.py", "--student-alias", "minsu"],
+    )
+
+    assert evaluate_image_robustness.main() == 0
+    responses.write_text("changed\n", encoding="utf-8")
+    with pytest.raises(SystemExit, match="응답 파일"):
         evaluate_image_robustness.main()
 
 
@@ -633,16 +722,19 @@ def test_robustness_runner_rejects_larger_than_approved_caps(
     (
         "failure_on",
         "change_input",
+        "change_image",
         "expected_status",
         "expected_quality",
         "expected_count",
         "expected_return",
     ),
     [
-        (2, False, "partial", "inconclusive", 1, 2),
-        (1, False, "not_run", "inconclusive", 0, 2),
-        (None, True, "partial", "inconclusive", 5, 2),
-        (None, False, "complete", "fail", 5, 0),
+        (0, False, False, "not_run", "inconclusive", 0, 2),
+        (2, False, False, "partial", "inconclusive", 1, 2),
+        (1, False, False, "partial", "inconclusive", 0, 2),
+        (None, True, False, "partial", "inconclusive", 5, 2),
+        (None, False, True, "partial", "inconclusive", 5, 2),
+        (None, False, False, "complete", "fail", 5, 0),
     ],
 )
 def test_robustness_runner_records_completion_state_and_input_hashes(
@@ -650,6 +742,7 @@ def test_robustness_runner_records_completion_state_and_input_hashes(
     tmp_path: Path,
     failure_on: int | None,
     change_input: bool,
+    change_image: bool,
     expected_status: str,
     expected_quality: str,
     expected_count: int,
@@ -707,18 +800,31 @@ def test_robustness_runner_records_completion_state_and_input_hashes(
         model = "nvidia_nim/google/gemma-4-31b-it"
         expected_actual_model = "google/gemma-4-31b-it"
         structured_output = "json_schema"
-        budget = SimpleNamespace(summary=lambda: {})
         last_call = None
 
         def __init__(self, on_response) -> None:
             self.on_response = on_response
             self.calls = 0
+            self.budget = SimpleNamespace(
+                summary=lambda: {
+                    "request_count": self.calls,
+                    "attempt_count": self.calls,
+                }
+            )
 
         def generate(self, *args, **kwargs):
             del args, kwargs
+            if failure_on == 0:
+                self.last_call = {
+                    "provider_status": "blocked",
+                    "error_type": "LiveBudgetExceeded",
+                }
+                raise RuntimeError("provider blocked")
             self.calls += 1
             if change_input and self.calls == 1:
                 reviews.write_text("changed\n", encoding="utf-8")
+            if change_image and self.calls == 5:
+                (variant_root / "variant-3.png").write_bytes(b"changed")
             if self.calls == failure_on:
                 self.last_call = {
                     "provider_status": "provider_error",
@@ -787,14 +893,15 @@ def test_robustness_runner_records_completion_state_and_input_hashes(
     assert summary["observed_status"] == expected_status
     assert summary["record_count"] == expected_count
     assert summary["invalid_output_count"] == expected_count
-    assert summary["input_changed_during_run"] is change_input
+    assert summary["input_changed_during_run"] is (change_input or change_image)
     assert summary["pricing_verified_on"] == date.today().isoformat()
     assert summary["schema_sha256"]
     assert summary["artifact_sha256"]["calls.jsonl"]
     assert bool(summary["artifact_sha256"]["responses.jsonl"]) is bool(expected_count)
-    assert summary["artifact_sha256"]["variants.jsonl"] == hashlib.sha256(
-        (variant_root / "variants.jsonl").read_bytes()
-    ).hexdigest()
+    assert (
+        summary["artifact_sha256"]["variants.jsonl"]
+        == hashlib.sha256((variant_root / "variants.jsonl").read_bytes()).hexdigest()
+    )
     assert summary["artifact_sha256"]["variant-review.csv"] == reviews_hash
     if expected_count == 1:
         response = json.loads((output / "responses.jsonl").read_text(encoding="utf-8"))
@@ -802,7 +909,9 @@ def test_robustness_runner_records_completion_state_and_input_hashes(
         assert response["raw_output"] == "not-json"
     calls = [json.loads(line) for line in (output / "calls.jsonl").read_text().splitlines()]
     if failure_on is not None:
-        assert calls[-1]["error_type"] == "APIConnectionError"
+        assert calls[-1]["error_type"] == (
+            "LiveBudgetExceeded" if failure_on == 0 else "APIConnectionError"
+        )
 
 
 def test_original_compares_reference_numbers() -> None:

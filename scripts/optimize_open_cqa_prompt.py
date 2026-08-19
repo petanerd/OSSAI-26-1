@@ -70,6 +70,10 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _files_changed(expected: list[tuple[Path, str]]) -> bool:
+    return any(not path.is_file() or _sha256(path) != digest for path, digest in expected)
+
+
 def _artifact_sha256(output: Path, cases_path: Path) -> dict[str, str | None]:
     paths = {
         "calls.jsonl": output / "calls.jsonl",
@@ -135,12 +139,8 @@ def main() -> int:
     parser.add_argument("--optimizer-max-output-tokens", type=int, required=True)
     parser.add_argument("--optimizer-max-cost-usd", type=float, required=True)
     parser.add_argument("--optimizer-max-wall-seconds", type=float, required=True)
-    parser.add_argument(
-        "--optimizer-catalog-verified-on", type=date.fromisoformat, required=True
-    )
-    parser.add_argument(
-        "--optimizer-pricing-verified-on", type=date.fromisoformat, required=True
-    )
+    parser.add_argument("--optimizer-catalog-verified-on", type=date.fromisoformat, required=True)
+    parser.add_argument("--optimizer-pricing-verified-on", type=date.fromisoformat, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if not args.live_optimize:
@@ -213,29 +213,35 @@ def main() -> int:
     callback = OpenCqaVlmCallback(target_provider, PROJECT_ROOT)
     cases_path = PROJECT_ROOT / "local-data/opencqa/week-03-cases.jsonl"
     cases = load_open_cqa_cases(cases_path)
+    cases_sha256 = _sha256(cases_path)
     splits = split_goldens(cases)
     source_evidence = build_selection_source_evidence(cases, splits)
     run_goldens = (
-        splits["development"][: args.demo_samples]
-        if args.demo_samples
-        else splits["development"]
+        splits["development"][: args.demo_samples] if args.demo_samples else splits["development"]
     )
     optimizer_config = DEMO_CONFIG if args.demo_samples else PROJECT_ROOT / "configs/week-04.yaml"
-    baseline = Prompt(
-        text_template=(PROJECT_ROOT / "prompts/week-04-baseline.md").read_text(encoding="utf-8")
-    )
-    source_hashes = {
-        "baseline_prompt_sha256": _sha256(PROJECT_ROOT / "prompts/week-04-baseline.md"),
-        "schema_sha256": _sha256(
-            PROJECT_ROOT / "src/verifiable_ai_workflow/schemas/models.py"
-        ),
-        "scorer_sha256": _sha256(
-            PROJECT_ROOT / "src/verifiable_ai_workflow/prompt_optimization.py"
-        ),
-        "optimizer_config_sha256": _sha256(optimizer_config),
-        "target_provider_config_sha256": _sha256(TARGET_CONFIG),
-        "optimizer_provider_config_sha256": _sha256(OPTIMIZER_CONFIG),
+    baseline_path = PROJECT_ROOT / "prompts/week-04-baseline.md"
+    baseline = Prompt(text_template=baseline_path.read_text(encoding="utf-8"))
+    source_paths = {
+        "baseline_prompt_sha256": baseline_path,
+        "schema_sha256": PROJECT_ROOT / "src/verifiable_ai_workflow/schemas/models.py",
+        "scorer_sha256": PROJECT_ROOT / "src/verifiable_ai_workflow/prompt_optimization.py",
+        "optimizer_config_sha256": optimizer_config,
+        "target_provider_config_sha256": TARGET_CONFIG,
+        "optimizer_provider_config_sha256": OPTIMIZER_CONFIG,
     }
+    source_hashes = {name: _sha256(path) for name, path in source_paths.items()}
+    expected_files = [
+        (cases_path, cases_sha256),
+        *((path, source_hashes[name]) for name, path in source_paths.items()),
+        *((PROJECT_ROOT / case.image_path, case.image_sha256) for case in cases),
+    ]
+
+    def artifact_hashes() -> dict[str, str | None]:
+        hashes = _artifact_sha256(args.output, cases_path)
+        hashes["week-03-cases.jsonl"] = cases_sha256
+        return hashes
+
     optimizer = build_prompt_optimizer(
         goldens=run_goldens,
         model_callback=callback,
@@ -293,13 +299,13 @@ def main() -> int:
             args.optimizer_catalog_verified_on,
             args.optimizer_pricing_verified_on,
         )
+        attempt_count = target_evidence["budget"].get("attempt_count", 0) + optimizer_evidence[
+            "budget"
+        ].get("attempt_count", 0)
+        input_changed = _files_changed(expected_files)
         summary = {
             "status": "inconclusive",
-            "observed_status": (
-                "partial"
-                if any(call.get("response_received_at") for call in call_records)
-                else "not_run"
-            ),
+            "observed_status": "partial" if attempt_count else "not_run",
             "evidence_kind": "live_quality",
             "git_sha": git_sha,
             "run_mode": "classroom_demo" if args.demo_samples else "full_evaluation",
@@ -312,17 +318,16 @@ def main() -> int:
             "target_provider": target_evidence,
             "optimizer_provider": optimizer_evidence,
             "provider_error_count": (
-                target_evidence["provider_error_count"]
-                + optimizer_evidence["provider_error_count"]
+                target_evidence["provider_error_count"] + optimizer_evidence["provider_error_count"]
             ),
             "model_drift_count": (
-                target_evidence["model_drift_count"]
-                + optimizer_evidence["model_drift_count"]
+                target_evidence["model_drift_count"] + optimizer_evidence["model_drift_count"]
             ),
             "error_type": type(exc).__name__,
             "error_message": str(exc),
+            "input_changed_during_run": input_changed,
             **source_hashes,
-            "artifact_sha256": _artifact_sha256(args.output, cases_path),
+            "artifact_sha256": artifact_hashes(),
         }
         (args.output / "summary.json").write_text(
             json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -355,16 +360,22 @@ def main() -> int:
             args.optimizer_pricing_verified_on,
         )
         provider_errors = (
-            target_evidence["provider_error_count"]
-            + optimizer_evidence["provider_error_count"]
+            target_evidence["provider_error_count"] + optimizer_evidence["provider_error_count"]
         )
         model_drifts = (
-            target_evidence["model_drift_count"]
-            + optimizer_evidence["model_drift_count"]
+            target_evidence["model_drift_count"] + optimizer_evidence["model_drift_count"]
         )
+        input_changed = _files_changed(expected_files)
+        attempt_count = target_evidence["budget"].get("attempt_count", 0) + optimizer_evidence[
+            "budget"
+        ].get("attempt_count", 0)
         summary = {
-            "status": "inconclusive" if provider_errors or model_drifts else "pass",
-            "observed_status": "complete",
+            "status": (
+                "inconclusive" if provider_errors or model_drifts or input_changed else "pass"
+            ),
+            "observed_status": (
+                "complete" if not input_changed else "partial" if attempt_count else "not_run"
+            ),
             "evidence_kind": "live_quality",
             "git_sha": git_sha,
             "run_mode": "classroom_demo",
@@ -379,17 +390,20 @@ def main() -> int:
             "test_count": 6,
             **source_evidence,
             "test_used_for_generation_or_selection": False,
-            "candidate_changed": (candidate.text_template or "")
-            != (baseline.text_template or ""),
+            "candidate_changed": (candidate.text_template or "") != (baseline.text_template or ""),
             "selected": None,
             "selection_reason": "not_evaluated_demo",
             "target_provider": target_evidence,
             "optimizer_provider": optimizer_evidence,
             "provider_error_count": provider_errors,
             "model_drift_count": model_drifts,
+            "input_changed_during_run": input_changed,
             **source_hashes,
-            "artifact_sha256": _artifact_sha256(args.output, cases_path),
+            "artifact_sha256": artifact_hashes(),
         }
+        if input_changed:
+            summary["error_type"] = "InputChangedDuringRun"
+            summary["error_message"] = "실행 중 지시문 또는 입력 파일이 바뀌었습니다"
         (args.output / "summary.json").write_text(
             json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
         )
@@ -402,9 +416,7 @@ def main() -> int:
     metric = OpenCqaDeterministicMetric()
     records: list[dict] = []
     try:
-        candidate_changed = (candidate.text_template or "") != (
-            baseline.text_template or ""
-        )
+        candidate_changed = (candidate.text_template or "") != (baseline.text_template or "")
         for golden in splits["validation"]:
             prompts = [("baseline", baseline)]
             if candidate_changed:
@@ -451,15 +463,18 @@ def main() -> int:
         args.optimizer_pricing_verified_on,
     )
     provider_errors = (
-        target_evidence["provider_error_count"]
-        + optimizer_evidence["provider_error_count"]
+        target_evidence["provider_error_count"] + optimizer_evidence["provider_error_count"]
     )
-    model_drifts = (
-        target_evidence["model_drift_count"] + optimizer_evidence["model_drift_count"]
-    )
+    model_drifts = target_evidence["model_drift_count"] + optimizer_evidence["model_drift_count"]
+    input_changed = _files_changed(expected_files)
+    attempt_count = target_evidence["budget"].get("attempt_count", 0) + optimizer_evidence[
+        "budget"
+    ].get("attempt_count", 0)
     summary = {
-        "status": "inconclusive" if provider_errors or model_drifts else "pass",
-        "observed_status": "complete",
+        "status": ("inconclusive" if provider_errors or model_drifts or input_changed else "pass"),
+        "observed_status": (
+            "complete" if not input_changed else "partial" if attempt_count else "not_run"
+        ),
         "evidence_kind": "live_quality",
         "git_sha": git_sha,
         "run_mode": "full_evaluation",
@@ -478,9 +493,13 @@ def main() -> int:
         "optimizer_provider": optimizer_evidence,
         "provider_error_count": provider_errors,
         "model_drift_count": model_drifts,
+        "input_changed_during_run": input_changed,
         **source_hashes,
-        "artifact_sha256": _artifact_sha256(args.output, cases_path),
+        "artifact_sha256": artifact_hashes(),
     }
+    if input_changed:
+        summary["error_type"] = "InputChangedDuringRun"
+        summary["error_message"] = "실행 중 지시문 또는 입력 파일이 바뀌었습니다"
     (args.output / "summary.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
     )

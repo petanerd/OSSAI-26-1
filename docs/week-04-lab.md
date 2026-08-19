@@ -141,7 +141,7 @@ uv run --locked python scripts/prepare_week_04_lab.py --alias minsu
 1. NIM Gemma가 처음 지시문으로 개발 문제에 답한다.
 2. 프로그램이 답에 고정 점수와 감점 이유를 붙인다.
 3. Gemini가 그 기록을 읽고 새 지시문을 제안한다.
-4. 처음 지시문과 후보 지시문에서 달라진 문장을 찾는다.
+4. 후보가 달라졌다면 바뀐 문장을 찾고, 같다면 바뀐 문장이 없음을 확인한다.
 5. `summary.json`의 `run_mode=classroom_demo`와
    `quality_selection_allowed=false`를 확인한다.
 
@@ -150,6 +150,9 @@ uv run --locked python scripts/prepare_week_04_lab.py --alias minsu
 기록을 처음 열어 최종 선택과 품질을 확인한다. 이미지 API도 수업 중 다시 호출하지 않고,
 6절에서 저장 응답 5건을 사용한다. 승인이 없거나 API 서비스가 중단되면 시연을 생략하고 전체
 저장 기록으로 계속한다.
+
+후보가 처음 지시문과 같을 수도 있다. 이때는 `candidate_changed=false`와 바뀐 문장이 없음을
+확인한 뒤, 4절의 전체 저장 결과에서 실제 지시문 변화와 점수 차이를 분석한다.
 
 2026-08-19 리허설에서는 개발 사례 `884`와 `43`으로 이 과정을 끝까지 실행했다. NIM 5회와
 Gemini 2회가 모두 요청한 모델에서 응답했고 오류는 없었다. Gemini는 “가장 높거나 낮은 항목을

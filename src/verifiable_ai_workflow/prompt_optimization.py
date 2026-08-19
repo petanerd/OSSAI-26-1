@@ -45,6 +45,7 @@ def split_goldens(cases: list[OpenCQACase]) -> dict[str, list[Golden]]:
                     "split": case.course_split,
                     "sample_id": case.sample_id,
                     "image_path": case.image_path,
+                    "image_sha256": case.image_sha256,
                 },
             )
             for case in selected
@@ -79,8 +80,7 @@ def build_selection_source_evidence(
 
 def validate_development_goldens(goldens: list[Golden]) -> None:
     if not goldens or any(
-        (golden.additional_metadata or {}).get("split") != "development"
-        for golden in goldens
+        (golden.additional_metadata or {}).get("split") != "development" for golden in goldens
     ):
         raise ValueError("PromptOptimizer에는 development split만 사용할 수 있습니다")
 
@@ -171,10 +171,11 @@ class OpenCqaVlmCallback:
     def __call__(self, prompt: Prompt, golden: Golden) -> str:
         metadata = golden.additional_metadata or {}
         image_path = self.project_root / metadata["image_path"]
-        image = base64.b64encode(image_path.read_bytes()).decode("ascii")
-        mime_type = (
-            "image/jpeg" if image_path.suffix.lower() in {".jpg", ".jpeg"} else "image/png"
-        )
+        image_bytes = image_path.read_bytes()
+        if hashlib.sha256(image_bytes).hexdigest() != metadata["image_sha256"]:
+            raise ValueError("OpenCQA 이미지 bytes가 case SHA-256과 다릅니다")
+        image = base64.b64encode(image_bytes).decode("ascii")
+        mime_type = "image/jpeg" if image_path.suffix.lower() in {".jpg", ".jpeg"} else "image/png"
         instruction = prompt.interpolate(question=golden.input)
         return self.provider.generate(
             str(metadata["sample_id"]),

@@ -1,4 +1,5 @@
 import argparse
+import hashlib
 import json
 import sys
 from datetime import date
@@ -47,9 +48,7 @@ def _cases() -> list[OpenCQACase]:
             pair_id=f"pair-{index}",
             sample_id=str(index),
             family_id=f"family-{index}",
-            course_split=(
-                "development" if index < 18 else "validation" if index < 24 else "test"
-            ),
+            course_split=("development" if index < 18 else "validation" if index < 24 else "test"),
             source_split="val",
             source_revision="a" * 40,
             source_license="GPL-3.0",
@@ -73,6 +72,11 @@ def test_split_is_18_6_6_and_optimizer_uses_development(project_root: Path) -> N
     assert all(
         (golden.additional_metadata or {})["split"] == split
         for split, goldens in splits.items()
+        for golden in goldens
+    )
+    assert all(
+        (golden.additional_metadata or {})["image_sha256"] == "b" * 64
+        for goldens in splits.values()
         for golden in goldens
     )
     optimizer = build_prompt_optimizer(
@@ -99,9 +103,7 @@ def test_metric_returns_feedback_for_missing_number() -> None:
     output = json.dumps(
         {
             "answer": "It rose to 20%.",
-            "evidence": [
-                {"evidence_id": "chart#page=1", "quote": "20%", "page_number": 1}
-            ],
+            "evidence": [{"evidence_id": "chart#page=1", "quote": "20%", "page_number": 1}],
             "confidence": 0.8,
             "abstained": False,
             "abstention_reason": None,
@@ -141,12 +143,17 @@ def test_vlm_callback_labels_jpeg_input_correctly(tmp_path: Path) -> None:
     provider = Provider()
     golden = split_goldens(_cases())["development"][0]
     golden.additional_metadata["image_path"] = image.name
+    golden.additional_metadata["image_sha256"] = hashlib.sha256(image.read_bytes()).hexdigest()
 
     OpenCqaVlmCallback(provider, tmp_path)(Prompt(text_template="{question}"), golden)
 
     assert provider.messages is not None
     data_url = provider.messages[1]["content"][1]["image_url"]["url"]
     assert data_url.startswith("data:image/jpeg;base64,")
+
+    image.write_bytes(b"changed")
+    with pytest.raises(ValueError, match="SHA-256"):
+        OpenCqaVlmCallback(provider, tmp_path)(Prompt(text_template="{question}"), golden)
 
 
 def test_optimizer_separates_nim_target_and_gemini_review() -> None:
@@ -179,9 +186,27 @@ def test_week_04_student_inputs_reject_path_traversal() -> None:
         _project_path(Path("/project"), "../other")
 
 
-def test_student_preparation_hides_full_result_until_after_demo(
-    monkeypatch, capsys
-) -> None:
+def test_week_04_prepare_rejects_changed_artifact_hash(tmp_path: Path) -> None:
+    artifact = tmp_path / "artifact.json"
+    artifact.write_text("original", encoding="utf-8")
+    stored = {"artifact.json": hashlib.sha256(artifact.read_bytes()).hexdigest()}
+
+    assert prepare_week_04_lab._stored_hashes_match(stored, {"artifact.json": artifact})
+    artifact.write_text("changed", encoding="utf-8")
+    assert not prepare_week_04_lab._stored_hashes_match(stored, {"artifact.json": artifact})
+
+
+def test_optimizer_detects_changed_source_file(tmp_path: Path) -> None:
+    source = tmp_path / "source.json"
+    source.write_text("original", encoding="utf-8")
+    expected = [(source, hashlib.sha256(source.read_bytes()).hexdigest())]
+
+    assert not optimize_open_cqa_prompt._files_changed(expected)
+    source.write_text("changed", encoding="utf-8")
+    assert optimize_open_cqa_prompt._files_changed(expected)
+
+
+def test_student_preparation_hides_full_result_until_after_demo(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         prepare_week_04_lab,
         "prepare",
@@ -224,9 +249,7 @@ def test_week_04_inspector_finds_prompt_and_score_changes() -> None:
     assert (best["sample_id"], worst["sample_id"]) == ("up", "down")
 
 
-def test_week_04_inspector_handles_identical_candidate(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_week_04_inspector_handles_identical_candidate(monkeypatch, tmp_path: Path) -> None:
     result_dir = tmp_path / "result"
     (tmp_path / "prompts").mkdir()
     (tmp_path / "local-data/opencqa").mkdir(parents=True)
@@ -286,9 +309,7 @@ def test_week_04_inspector_handles_identical_candidate(
                 "validation.jsonl": result_dir / "validation.jsonl",
                 "candidate-prompt.md": result_dir / "candidate-prompt.md",
                 "selected-prompt.md": result_dir / "selected-prompt.md",
-                "week-03-cases.jsonl": (
-                    tmp_path / "local-data/opencqa/week-03-cases.jsonl"
-                ),
+                "week-03-cases.jsonl": (tmp_path / "local-data/opencqa/week-03-cases.jsonl"),
             }.items()
         },
     }
@@ -296,13 +317,9 @@ def test_week_04_inspector_handles_identical_candidate(
     monkeypatch.setattr(
         inspect_week_04_prompt_results,
         "load_week4_class_materials",
-        lambda project_root: SimpleNamespace(
-            label="test", prompt_optimization_dir=result_dir
-        ),
+        lambda project_root: SimpleNamespace(label="test", prompt_optimization_dir=result_dir),
     )
-    monkeypatch.setattr(
-        inspect_week_04_prompt_results, "load_open_cqa_cases", lambda path: []
-    )
+    monkeypatch.setattr(inspect_week_04_prompt_results, "load_open_cqa_cases", lambda path: [])
 
     output = inspect_week_04_prompt_results.inspect(tmp_path, Path("result"))
 
@@ -418,21 +435,33 @@ def test_optimizer_rejects_larger_than_approved_caps(monkeypatch, tmp_path) -> N
         optimize_open_cqa_prompt.main()
 
 
-def test_optimizer_connection_error_without_response_is_inconclusive(
-    monkeypatch, tmp_path
+@pytest.mark.parametrize(
+    ("attempt_count", "expected_status", "provider_error"),
+    [
+        (1, "partial", "APIConnectionError"),
+        (0, "not_run", "LiveBudgetExceeded"),
+    ],
+)
+def test_optimizer_failure_without_response_is_inconclusive(
+    monkeypatch, tmp_path, attempt_count, expected_status, provider_error
 ) -> None:
     class Provider:
         structured_output = "json_schema"
-        last_call = {
-            "provider_status": "provider_error",
-            "error_type": "APIConnectionError",
-        }
-        budget = SimpleNamespace(summary=lambda: {"request_count": 1})
 
         def __init__(self, settings, output_ceiling) -> None:
             self.model = settings.provider.model
             self.expected_actual_model = settings.provider.expected_actual_model
             self.request_output_token_ceiling = output_ceiling
+            self.last_call = {
+                "provider_status": "provider_error" if attempt_count else "blocked",
+                "error_type": provider_error,
+            }
+            self.budget = SimpleNamespace(
+                summary=lambda: {
+                    "request_count": attempt_count,
+                    "attempt_count": attempt_count,
+                }
+            )
 
     class Optimizer:
         def optimize(self, prompt, goldens):
@@ -505,7 +534,7 @@ def test_optimizer_connection_error_without_response_is_inconclusive(
     assert optimize_open_cqa_prompt.main() == 2
     summary = json.loads((output / "summary.json").read_text(encoding="utf-8"))
     assert summary["status"] == "inconclusive"
-    assert summary["observed_status"] == "not_run"
+    assert summary["observed_status"] == expected_status
     assert summary["run_mode"] == "full_evaluation"
     assert summary["error_type"] == "RuntimeError"
     assert summary["source_revision"] == "a" * 40
@@ -524,4 +553,4 @@ def test_optimizer_connection_error_without_response_is_inconclusive(
         for line in (output / "calls.jsonl").read_text(encoding="utf-8").splitlines()
     ]
     assert {call["provider_role"] for call in calls} == {"target", "optimizer"}
-    assert all(call["error_type"] == "APIConnectionError" for call in calls)
+    assert all(call["error_type"] == provider_error for call in calls)

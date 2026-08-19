@@ -33,8 +33,16 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _variant_hashes(artifacts: list[VariantArtifact]) -> dict[str, str]:
-    return {item.variant_id: item.image_sha256 for item in artifacts}
+def _variant_inputs(artifacts: list[VariantArtifact]) -> dict[str, tuple[str, str, str, str]]:
+    return {
+        item.variant_id: (
+            item.sample_id,
+            item.intended_behavior,
+            item.source_sha256,
+            item.image_sha256,
+        )
+        for item in artifacts
+    }
 
 
 def _same_variant_inputs(
@@ -44,7 +52,7 @@ def _same_variant_inputs(
     canonical_case: dict,
 ) -> bool:
     return (
-        _variant_hashes(artifacts) == _variant_hashes(canonical_artifacts)
+        _variant_inputs(artifacts) == _variant_inputs(canonical_artifacts)
         and case == canonical_case
     )
 
@@ -68,9 +76,7 @@ def main() -> int:
     reviews_path = args.reviews or student_root / "variant-review.csv"
     case_path = args.case or student_root / "case.json"
     responses_path = args.responses or (
-        materials.image_response_dir / "responses.jsonl"
-        if materials
-        else None
+        materials.image_response_dir / "responses.jsonl" if materials else None
     )
     output_path = args.output or (
         PROJECT_ROOT / "reports/week-04/students" / args.student_alias / "evaluation.json"
@@ -98,12 +104,13 @@ def main() -> int:
         "variants.jsonl": variants_path,
         "variant-review.csv": reviews_path,
     }
+    if stored_hashes.get("responses.jsonl") != _sha256(responses_path):
+        raise SystemExit(
+            "이미지 응답을 만들 때 기록한 SHA-256과 현재 응답 파일의 SHA-256이 다릅니다"
+        )
     if not args.student_alias and (
         not stored_hashes
-        or any(
-            stored_hashes.get(name) != _sha256(path)
-            for name, path in response_inputs.items()
-        )
+        or any(stored_hashes.get(name) != _sha256(path) for name, path in response_inputs.items())
     ):
         raise SystemExit(
             "이미지 응답을 만들 때 기록한 SHA-256과 현재 평가 입력의 SHA-256이 다릅니다"
