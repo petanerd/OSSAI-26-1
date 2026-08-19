@@ -30,6 +30,7 @@ from verifiable_ai_workflow.prompt_optimization import (
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 TARGET_CONFIG = PROJECT_ROOT / "configs/nvidia-nim-gemma4.yaml"
 OPTIMIZER_CONFIG = PROJECT_ROOT / "configs/google-gemini-3.5-flash-lite-judge.yaml"
+DEMO_CONFIG = PROJECT_ROOT / "configs/week-04-demo.yaml"
 OPTIMIZER_REQUEST_OUTPUT_TOKEN_CEILING = 2_000
 TARGET_APPROVED_CAPS = LiveBudgetCaps(
     max_requests=45,
@@ -46,6 +47,22 @@ OPTIMIZER_APPROVED_CAPS = LiveBudgetCaps(
     max_output_tokens=16_000,
     max_cost_usd=0.01,
     max_wall_seconds=7_200,
+)
+DEMO_TARGET_APPROVED_CAPS = LiveBudgetCaps(
+    max_requests=4,
+    max_attempts=4,
+    max_input_tokens=80_000,
+    max_output_tokens=2_000,
+    max_cost_usd=0.01,
+    max_wall_seconds=900,
+)
+DEMO_OPTIMIZER_APPROVED_CAPS = LiveBudgetCaps(
+    max_requests=2,
+    max_attempts=4,
+    max_input_tokens=20_000,
+    max_output_tokens=8_000,
+    max_cost_usd=0.01,
+    max_wall_seconds=900,
 )
 
 
@@ -99,6 +116,12 @@ def _select_prompt(
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--live-optimize", action="store_true")
+    parser.add_argument(
+        "--demo-samples",
+        type=int,
+        choices=(1, 2),
+        help="수업 중 과정 시연에 사용할 development 사례 수",
+    )
     parser.add_argument("--max-requests", type=int, required=True)
     parser.add_argument("--max-input-tokens", type=int, required=True)
     parser.add_argument("--max-output-tokens", type=int, required=True)
@@ -146,7 +169,12 @@ def main() -> int:
         max_cost_usd=args.optimizer_max_cost_usd,
         max_wall_seconds=args.optimizer_max_wall_seconds,
     )
-    if target_caps != TARGET_APPROVED_CAPS or optimizer_caps != OPTIMIZER_APPROVED_CAPS:
+    approved_caps = (
+        (DEMO_TARGET_APPROVED_CAPS, DEMO_OPTIMIZER_APPROVED_CAPS)
+        if args.demo_samples
+        else (TARGET_APPROVED_CAPS, OPTIMIZER_APPROVED_CAPS)
+    )
+    if (target_caps, optimizer_caps) != approved_caps:
         raise SystemExit("Week 4 PromptOptimizer는 두 provider의 승인 cap과 정확히 같아야 합니다")
     target_settings = load_settings(TARGET_CONFIG)
     optimizer_settings = load_settings(OPTIMIZER_CONFIG)
@@ -187,6 +215,12 @@ def main() -> int:
     cases = load_open_cqa_cases(cases_path)
     splits = split_goldens(cases)
     source_evidence = build_selection_source_evidence(cases, splits)
+    run_goldens = (
+        splits["development"][: args.demo_samples]
+        if args.demo_samples
+        else splits["development"]
+    )
+    optimizer_config = DEMO_CONFIG if args.demo_samples else PROJECT_ROOT / "configs/week-04.yaml"
     baseline = Prompt(
         text_template=(PROJECT_ROOT / "prompts/week-04-baseline.md").read_text(encoding="utf-8")
     )
@@ -198,15 +232,15 @@ def main() -> int:
         "scorer_sha256": _sha256(
             PROJECT_ROOT / "src/verifiable_ai_workflow/prompt_optimization.py"
         ),
-        "optimizer_config_sha256": _sha256(PROJECT_ROOT / "configs/week-04.yaml"),
+        "optimizer_config_sha256": _sha256(optimizer_config),
         "target_provider_config_sha256": _sha256(TARGET_CONFIG),
         "optimizer_provider_config_sha256": _sha256(OPTIMIZER_CONFIG),
     }
     optimizer = build_prompt_optimizer(
-        goldens=splits["development"],
+        goldens=run_goldens,
         model_callback=callback,
         optimizer_model=CourseJudgeModel(optimizer_provider),
-        config_path=PROJECT_ROOT / "configs/week-04.yaml",
+        config_path=optimizer_config,
     )
 
     def provider_evidence(role, provider, settings, catalog_date, pricing_date) -> dict:
@@ -268,6 +302,9 @@ def main() -> int:
             ),
             "evidence_kind": "live_quality",
             "git_sha": git_sha,
+            "run_mode": "classroom_demo" if args.demo_samples else "full_class_material",
+            "demo_sample_count": args.demo_samples,
+            "quality_selection_allowed": not bool(args.demo_samples),
             "development_count": 18,
             "validation_count": 6,
             "test_count": 6,
@@ -294,13 +331,73 @@ def main() -> int:
         return 2
 
     try:
-        candidate = optimizer.optimize(baseline, splits["development"])
+        candidate = optimizer.optimize(baseline, run_goldens)
     except Exception as exc:
         return save_inconclusive(exc)
     (args.output / "candidate-prompt.md").write_text(
         candidate.text_template or "",
         encoding="utf-8",
     )
+
+    if args.demo_samples:
+        target_evidence = provider_evidence(
+            "target",
+            target_provider,
+            target_settings,
+            args.catalog_verified_on,
+            args.pricing_verified_on,
+        )
+        optimizer_evidence = provider_evidence(
+            "optimizer",
+            optimizer_provider,
+            optimizer_settings,
+            args.optimizer_catalog_verified_on,
+            args.optimizer_pricing_verified_on,
+        )
+        provider_errors = (
+            target_evidence["provider_error_count"]
+            + optimizer_evidence["provider_error_count"]
+        )
+        model_drifts = (
+            target_evidence["model_drift_count"]
+            + optimizer_evidence["model_drift_count"]
+        )
+        summary = {
+            "status": "inconclusive" if provider_errors or model_drifts else "pass",
+            "observed_status": "complete",
+            "evidence_kind": "live_quality",
+            "git_sha": git_sha,
+            "run_mode": "classroom_demo",
+            "recommended_use": "prompt_optimization_process_only",
+            "quality_selection_allowed": False,
+            "demo_sample_count": args.demo_samples,
+            "demo_sample_ids": [
+                (golden.additional_metadata or {})["sample_id"] for golden in run_goldens
+            ],
+            "development_count": 18,
+            "validation_count": 6,
+            "test_count": 6,
+            **source_evidence,
+            "test_used_for_generation_or_selection": False,
+            "candidate_changed": (candidate.text_template or "")
+            != (baseline.text_template or ""),
+            "selected": None,
+            "selection_reason": "not_evaluated_demo",
+            "target_provider": target_evidence,
+            "optimizer_provider": optimizer_evidence,
+            "provider_error_count": provider_errors,
+            "model_drift_count": model_drifts,
+            **source_hashes,
+            "artifact_sha256": _artifact_sha256(args.output, cases_path),
+        }
+        (args.output / "summary.json").write_text(
+            json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        print(
+            f"수업 시연 {args.demo_samples}건 완료: 후보 생성={summary['candidate_changed']}, "
+            "품질 선택=하지 않음"
+        )
+        return 0 if summary["status"] == "pass" else 2
 
     metric = OpenCqaDeterministicMetric()
     records: list[dict] = []

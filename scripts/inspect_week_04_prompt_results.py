@@ -52,6 +52,13 @@ def _comparisons(rows: list[dict]) -> list[dict]:
     return comparisons
 
 
+def _representatives(comparisons: list[dict]) -> tuple[dict, dict]:
+    return (
+        max(comparisons, key=lambda item: item["delta"]),
+        min(comparisons, key=lambda item: item["delta"]),
+    )
+
+
 def _answer(row: dict) -> str:
     try:
         return str(json.loads(row["output"])["answer"])
@@ -144,8 +151,12 @@ def inspect(project_root: Path, optimization_dir: Path | None = None) -> str:
             f"- 결론: {reason}",
         ]
     )
-    for sample_id, label in (("5978", "점수가 오른 사례"), ("699", "점수가 떨어진 사례")):
-        item = next(row for row in comparisons if row["sample_id"] == sample_id)
+    best, worst = _representatives(comparisons)
+    for item, label in (
+        (best, "점수가 가장 오른 사례"),
+        (worst, "점수가 가장 떨어진 사례"),
+    ):
+        sample_id = item["sample_id"]
         lines.extend(
             [
                 "",

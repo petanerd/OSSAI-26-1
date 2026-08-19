@@ -82,6 +82,14 @@ def test_split_is_18_6_6_and_optimizer_uses_development(project_root: Path) -> N
         config_path=project_root / "configs/week-04.yaml",
     )
     assert optimizer.algorithm.iterations == 2
+    demo_optimizer = build_prompt_optimizer(
+        goldens=splits["development"][:1],
+        model_callback=lambda prompt, golden: "{}",
+        optimizer_model=NoCallModel(),
+        config_path=project_root / "configs/week-04-demo.yaml",
+    )
+    assert demo_optimizer.algorithm.iterations == 1
+    assert demo_optimizer.algorithm.minibatch_size == 1
     with pytest.raises(ValueError, match="development"):
         validate_development_goldens(splits["validation"])
 
@@ -182,6 +190,14 @@ def test_week_04_inspector_finds_prompt_and_score_changes() -> None:
         ]
     )
     assert comparisons[0]["delta"] == pytest.approx(0.5)
+    best, worst = inspect_week_04_prompt_results._representatives(
+        [
+            {"sample_id": "up", "delta": 0.2},
+            {"sample_id": "down", "delta": -0.3},
+            {"sample_id": "same", "delta": 0.0},
+        ]
+    )
+    assert (best["sample_id"], worst["sample_id"]) == ("up", "down")
 
 
 @pytest.mark.parametrize(

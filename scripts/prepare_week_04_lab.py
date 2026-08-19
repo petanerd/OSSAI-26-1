@@ -78,6 +78,14 @@ def prepare(
     robustness_summary = json.loads((robustness / "summary.json").read_text(encoding="utf-8"))
     expected_input_hash = summary.get("artifact_sha256", {}).get("week-03-cases.jsonl")
     source_git_sha = summary.get("git_sha")
+    target_budget = summary.get("target_provider", {}).get("budget", {})
+    optimizer_budget = summary.get("optimizer_provider", {}).get("budget", {})
+    call_counts = (
+        target_budget.get("request_count"),
+        target_budget.get("attempt_count"),
+        optimizer_budget.get("request_count"),
+        optimizer_budget.get("attempt_count"),
+    )
     same_git_sha = bool(source_git_sha) and source_git_sha == robustness_summary.get(
         "git_sha"
     )
@@ -92,11 +100,11 @@ def prepare(
         },
         "공개 test 미사용": summary.get("test_used_for_generation_or_selection") is False,
         "현재 입력과 저장 입력 일치": expected_input_hash == _sha256(cases_path),
-        "지시문 호출 45/4회": summary.get("target_provider", {})
-        .get("budget", {})
-        .get("request_count")
-        == 45
-        and summary.get("optimizer_provider", {}).get("budget", {}).get("request_count") == 4,
+        "지시문 호출 승인 상한 이내": all(isinstance(value, int) for value in call_counts)
+        and 0 < call_counts[0] <= 45
+        and 0 < call_counts[1] <= 45
+        and 0 < call_counts[2] <= 4
+        and 0 < call_counts[3] <= 8,
         "지시문 실행 오류·모델 불일치 0건": summary.get("provider_error_count") == 0
         and summary.get("model_drift_count") == 0,
         "이미지 응답 5개 완료": robustness_summary.get("record_count") == 5,
@@ -122,6 +130,8 @@ def prepare(
     return {
         "materials_label": materials.label,
         "source_git_sha": str(source_git_sha)[:7],
+        "target_requests": call_counts[0],
+        "optimizer_requests": call_counts[2],
         "counts": counts,
         "optimization": optimization.relative_to(project_root),
         "robustness": robustness.relative_to(project_root),
@@ -158,6 +168,10 @@ def main() -> int:
         "(수강생이 입력하거나 바꾸는 값 아님)"
     )
     print("- 데이터: 개발 18개, 검증 6개, 공개 test 6개")
+    print(
+        f"- 실제 API 호출: NIM {result['target_requests']}회, "
+        f"Gemini {result['optimizer_requests']}회 (승인 상한 45/4회)"
+    )
     selection = {
         "validation_improved": "새 지시문의 검증 평균이 높아 새 지시문을 선택함",
         "validation_not_improved": "새 지시문의 검증 평균이 높지 않아 처음 지시문을 유지함",
