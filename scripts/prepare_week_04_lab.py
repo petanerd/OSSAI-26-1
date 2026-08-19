@@ -168,19 +168,21 @@ def main() -> int:
         "(수강생이 입력하거나 바꾸는 값 아님)"
     )
     print("- 데이터: 개발 18개, 검증 6개, 공개 test 6개")
-    print(
-        f"- 실제 API 호출: NIM {result['target_requests']}회, "
-        f"Gemini {result['optimizer_requests']}회 (승인 상한 45/4회)"
-    )
-    selection = {
-        "validation_improved": "새 지시문의 검증 평균이 높아 새 지시문을 선택함",
-        "validation_not_improved": "새 지시문의 검증 평균이 높지 않아 처음 지시문을 유지함",
-        "candidate_identical": "제안이 처음 지시문과 같아 처음 지시문을 유지함",
-    }.get(str(result["selection_reason"]), str(result["selection_reason"]))
-    print(f"- 선택 결과: {selection}")
-    print(f"- 지시문 비교 자료: {result['optimization']}")
-    print(f"- 이미지 응답 자료: {result['robustness']}")
-    if not args.check_only:
+    if args.check_only:
+        print(
+            f"- 실제 API 호출: NIM {result['target_requests']}회, "
+            f"Gemini {result['optimizer_requests']}회 (승인 상한 45/4회)"
+        )
+        selection = {
+            "validation_improved": "새 지시문의 검증 평균이 높아 새 지시문을 선택함",
+            "validation_not_improved": "새 지시문의 검증 평균이 높지 않아 처음 지시문을 유지함",
+            "candidate_identical": "제안이 처음 지시문과 같아 처음 지시문을 유지함",
+        }.get(str(result["selection_reason"]), str(result["selection_reason"]))
+        print(f"- 선택 결과: {selection}")
+        print(f"- 지시문 비교 자료: {result['optimization']}")
+        print(f"- 이미지 응답 자료: {result['robustness']}")
+    else:
+        print("- 다음 순서: 개발 사례 2건 시연 후 전체 저장 결과 확인")
         print(f"- 개인 작업 폴더: {result['student_root']}")
         print(f"- 개인 결과 폴더: {result['report_root']}")
     return 0

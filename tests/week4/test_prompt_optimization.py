@@ -179,6 +179,30 @@ def test_week_04_student_inputs_reject_path_traversal() -> None:
         _project_path(Path("/project"), "../other")
 
 
+def test_student_preparation_hides_full_result_until_after_demo(
+    monkeypatch, capsys
+) -> None:
+    monkeypatch.setattr(
+        prepare_week_04_lab,
+        "prepare",
+        lambda *args, **kwargs: {
+            "materials_label": "verified",
+            "source_git_sha": "abcdef0",
+            "student_root": Path("local-data/week-04-students/minsu"),
+            "report_root": Path("reports/week-04/students/minsu"),
+        },
+    )
+    monkeypatch.setattr(sys, "argv", ["prepare_week_04_lab.py", "--alias", "minsu"])
+
+    assert prepare_week_04_lab.main() == 0
+    output = capsys.readouterr().out
+    assert "개발 사례 2건 시연 후 전체 저장 결과 확인" in output
+    assert all(
+        label not in output
+        for label in ("선택 결과", "실제 API 호출", "지시문 비교 자료", "이미지 응답 자료")
+    )
+
+
 def test_week_04_inspector_finds_prompt_and_score_changes() -> None:
     assert inspect_week_04_prompt_results._changed_lines(
         "answer: 값\nkeep", "answer: 문장\nkeep"
