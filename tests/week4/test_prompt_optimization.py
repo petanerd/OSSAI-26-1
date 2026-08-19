@@ -83,7 +83,7 @@ def test_split_is_18_6_6_and_optimizer_uses_development(project_root: Path) -> N
     )
     assert optimizer.algorithm.iterations == 2
     demo_optimizer = build_prompt_optimizer(
-        goldens=splits["development"][:1],
+        goldens=splits["development"][:2],
         model_callback=lambda prompt, golden: "{}",
         optimizer_model=NoCallModel(),
         config_path=project_root / "configs/week-04-demo.yaml",

@@ -201,8 +201,8 @@ Week 4에서는 NIM Gemma가 차트에 답하고 Gemini Flash Lite가 지시문�
 | PromptOptimizer의 NIM Gemma 타깃 호출 | OpenCQA JPEG·질문·타깃 지시문 | 요청·attempt 45/45, 입력 900,000 token, 출력 22,500 token, $0.01, 7,200초, 재시도 0 |
 | PromptOptimizer의 Gemini 검토 호출 | 지시문·질문·사람 기대 답·NIM 출력·고정 점수와 이유 | 요청 4회, attempt 최대 8회, 입력 40,000 token, 출력 16,000 token, $0.01, 7,200초, 요청당 재시도 1회 |
 | `scripts/run_image_robustness.py`의 NIM Gemma | OpenCQA 원본·변형 이미지, 질문, 선택 지시문 | 요청·attempt 5/5, 입력 100,000 token, 출력 2,500 token, $0.01, 900초, 재시도 0 |
-| 수업 중 1~2건 시연의 NIM Gemma | 개발 사례 JPEG·질문·처음 지시문 | 요청·attempt 4/4, 입력 80,000 token, 출력 2,000 token, $0.01, 900초, 재시도 0 |
-| 수업 중 1~2건 시연의 Gemini | 지시문·질문·사람 기대 답·NIM 출력·고정 점수와 이유 | 요청 2회, attempt 최대 4회, 입력 20,000 token, 출력 8,000 token, $0.01, 900초, 요청당 재시도 1회 |
+| 수업 중 2건 시연의 NIM Gemma | 개발 사례 JPEG·질문·처음 지시문 | 요청·attempt 4/4, 입력 80,000 token, 출력 2,000 token, $0.01, 900초, 재시도 0 |
+| 수업 중 2건 시연의 Gemini | 지시문·질문·사람 기대 답·NIM 출력·고정 점수와 이유 | 요청 2회, attempt 최대 4회, 입력 20,000 token, 출력 8,000 token, $0.01, 900초, 요청당 재시도 1회 |
 
 세 실행 모두 `structured_output=json_schema`로 답의 필드와 자료형을 제한한다. NIM의 차트
 답변은 요청당 출력 500 token, Gemini의 지시문 진단과 재작성은 2,000 token까지 허용한다.
@@ -211,7 +211,7 @@ NVIDIA와 Google의 사용량 상한과 `provider_role`은 따로 기록한다. 
 오류는 `calls.jsonl`과 `summary.json`에 남긴다.
 
 앞의 첫 세 행은 수업 전에 전체 저장 기록을 만들 때 쓰는 상한이다. 마지막 두 행은 반 전체가
-한 번 실행하는 개발 사례 1건, 여유가 있을 때 2건짜리 시연 상한이다. 시연은 지시문 생성
+한 번 실행하는 개발 사례 2건짜리 시연 상한이다. 시연은 지시문 생성
 과정만 보여 주며 검증 문제를 실행하거나 후보를 선택하지 않는다. 이미지 5건도 수업 중 다시
 호출하지 않는다.
 

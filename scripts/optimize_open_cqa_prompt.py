@@ -119,8 +119,8 @@ def main() -> int:
     parser.add_argument(
         "--demo-samples",
         type=int,
-        choices=(1, 2),
-        help="수업 중 과정 시연에 사용할 development 사례 수",
+        choices=(2,),
+        help="수업 중 GEPA 과정 시연에 사용할 development 사례 수(2건 고정)",
     )
     parser.add_argument("--max-requests", type=int, required=True)
     parser.add_argument("--max-input-tokens", type=int, required=True)
