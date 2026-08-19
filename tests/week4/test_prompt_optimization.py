@@ -1,3 +1,4 @@
+import argparse
 import json
 import sys
 from datetime import date
@@ -8,7 +9,11 @@ import pytest
 from deepeval.models import DeepEvalBaseLLM
 from deepeval.prompt import Prompt
 
-from scripts import optimize_open_cqa_prompt
+from scripts import (
+    inspect_week_04_prompt_results,
+    optimize_open_cqa_prompt,
+    prepare_week_04_lab,
+)
 from verifiable_ai_workflow.config.settings import load_settings
 from verifiable_ai_workflow.open_cqa_candidates import OpenCQACase
 from verifiable_ai_workflow.prompt_optimization import (
@@ -19,6 +24,7 @@ from verifiable_ai_workflow.prompt_optimization import (
     split_goldens,
     validate_development_goldens,
 )
+from verifiable_ai_workflow.week4_materials import _project_path
 
 
 class NoCallModel(DeepEvalBaseLLM):
@@ -156,6 +162,26 @@ def test_identical_candidate_cannot_win_from_repeated_model_variation() -> None:
         baseline,
         "candidate_identical",
     )
+
+
+def test_week_04_student_inputs_reject_path_traversal() -> None:
+    with pytest.raises(argparse.ArgumentTypeError, match="별칭"):
+        prepare_week_04_lab._student_alias("../other")
+    with pytest.raises(ValueError, match="상대 경로"):
+        _project_path(Path("/project"), "../other")
+
+
+def test_week_04_inspector_finds_prompt_and_score_changes() -> None:
+    assert inspect_week_04_prompt_results._changed_lines(
+        "answer: 값\nkeep", "answer: 문장\nkeep"
+    ) == ["-answer: 값", "+answer: 문장"]
+    comparisons = inspect_week_04_prompt_results._comparisons(
+        [
+            {"sample_id": "1", "prompt": "baseline", "score": 0.2},
+            {"sample_id": "1", "prompt": "candidate", "score": 0.7},
+        ]
+    )
+    assert comparisons[0]["delta"] == pytest.approx(0.5)
 
 
 @pytest.mark.parametrize(

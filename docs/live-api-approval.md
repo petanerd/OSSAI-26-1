@@ -192,9 +192,9 @@ label과 Judge가 일치했다는 이유만으로 `human_calibrated`나 blocking
 
 ## Week 4 외부 전송 명세
 
-Week 4 최적화는 NIM Gemma를 타깃 모델로, Gemini Flash Lite를 최적화 검토 모델로 사용한다.
-아래 코드와 상한은 실행 안전장치이며 실제 호출 승인은 아니다. 두 provider의 데이터 전송,
-모델·가격·계정 할당량과 clean commit을 사람이 확인한 뒤에만 실행한다.
+Week 4에서는 NIM Gemma가 차트에 답하고 Gemini Flash Lite가 지시문을 고쳐 쓴다. 아래 상한을
+코드에 넣었다고 실행 승인이 끝난 것은 아니다. 실행 전에 사람이 NVIDIA와 Google로 보낼 자료,
+모델, 가격, 남은 할당량과 Git 변경 사항이 없는지 확인한다.
 
 | 실행·역할 | 보내는 자료 | 정확한 상한 |
 | --- | --- | --- |
@@ -202,17 +202,17 @@ Week 4 최적화는 NIM Gemma를 타깃 모델로, Gemini Flash Lite를 최적�
 | PromptOptimizer의 Gemini 검토 호출 | 지시문·질문·사람 기대 답·NIM 출력·고정 점수와 이유 | 요청 4회, attempt 최대 8회, 입력 40,000 token, 출력 16,000 token, $0.01, 7,200초, 요청당 재시도 1회 |
 | `scripts/run_image_robustness.py`의 NIM Gemma | OpenCQA 원본·변형 이미지, 질문, 선택 지시문 | 요청·attempt 5/5, 입력 100,000 token, 출력 2,500 token, $0.01, 900초, 재시도 0 |
 
-모두 `structured_output=json_schema`를 사용한다. NIM 차트 답변은 요청당 출력 500 token,
-Gemini의 text-only GEPA 진단·재작성은 2,000 token까지 허용한다. 두 provider의 budget과
-`provider_role`을 따로 기록한다. Gemini에는 OpenCQA 이미지와 사람의 `variant-review.csv`를
-보내지 않는다. API key도 보내지 않는다. 원응답·실제 처리 모델·token·시간·오류는
-`calls.jsonl`과 `summary.json`에 보존한다.
+세 실행 모두 `structured_output=json_schema`로 답의 필드와 자료형을 제한한다. NIM의 차트
+답변은 요청당 출력 500 token, Gemini의 지시문 진단과 재작성은 2,000 token까지 허용한다.
+NVIDIA와 Google의 사용량 상한과 `provider_role`은 따로 기록한다. Gemini에는 OpenCQA 이미지,
+사람이 쓴 `variant-review.csv`, API key를 보내지 않는다. 원응답·실제 처리 모델·token·시간·
+오류는 `calls.jsonl`과 `summary.json`에 남긴다.
 
 2026-08-18 실행 직전 NVIDIA 카탈로그에서 `google/gemma-4-31b-it` 제공을 확인했다.
 AI Studio의 `ossai-26-1` 프로젝트는 Gemini 3.5 Flash Lite 기준 1일 사용량이
-0/15 RPM·0/250,000 TPM·0/500 RPD였다. 최종 정본은 NIM 45회·Gemini 4회와 견고성 NIM
-5회를 상한 안에서 완료했고 provider 오류와 실제 모델 불일치는 0건이었다. 이 확인은 다음
-실행의 quota나 가격을 보장하지 않으므로 실행 당일 다시 확인한다.
+0/15 RPM·0/250,000 TPM·0/500 RPD였다. 수업에 사용할 실제 실행은 NIM 45회·Gemini 4회와
+이미지 평가용 NIM 5회를 상한 안에서 마쳤다. API 제공자 오류와 실제 모델 불일치는 0건이었다.
+이 기록이 다음 실행의 할당량이나 가격을 보장하지는 않으므로 실행 당일 다시 확인한다.
 
 ## Week 5–6에서 새 외부 전송을 추가할 때
 

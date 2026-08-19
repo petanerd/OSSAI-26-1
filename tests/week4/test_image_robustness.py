@@ -1,3 +1,4 @@
+import argparse
 import csv
 import hashlib
 import json
@@ -10,7 +11,7 @@ from types import SimpleNamespace
 import pytest
 from PIL import Image
 
-from scripts import evaluate_image_robustness, run_image_robustness
+from scripts import evaluate_image_robustness, generate_image_variants, run_image_robustness
 from verifiable_ai_workflow.image_robustness import (
     VariantArtifact,
     generate_variants,
@@ -70,6 +71,35 @@ def test_generate_four_variants_and_score_by_human_review(
     assert (
         score_variant(destroyed, "preserved", "47%", _answer(), _answer()).status
         == "invalid_variant"
+    )
+
+
+def test_student_alias_cannot_escape_week_04_output_folder() -> None:
+    for parser in (
+        generate_image_variants._student_alias,
+        evaluate_image_robustness._student_alias,
+    ):
+        with pytest.raises(argparse.ArgumentTypeError, match="별칭"):
+            parser("../../other")
+
+
+def test_student_variants_must_match_images_used_for_saved_responses() -> None:
+    artifact = VariantArtifact(
+        sample_id="884",
+        variant_id="rotate-2",
+        intended_behavior="invariance",
+        image_path="variant.png",
+        source_sha256="a" * 64,
+        image_sha256="b" * 64,
+    )
+    assert evaluate_image_robustness._same_variant_inputs(
+        [artifact], {"sample_id": "884"}, [artifact], {"sample_id": "884"}
+    )
+    assert not evaluate_image_robustness._same_variant_inputs(
+        [artifact.model_copy(update={"image_sha256": "c" * 64})],
+        {"sample_id": "884"},
+        [artifact],
+        {"sample_id": "884"},
     )
 
 

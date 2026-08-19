@@ -1,4 +1,5 @@
-"""OpenCQA 원본과 변형 이미지 4개를 같은 VLM prompt로 실행한다."""
+# 목적: 선택한 지시문으로 원본과 변형 이미지 4개를 같은 NIM Gemma에 보낸다.
+# 기대 결과: 이미지 5개의 원응답, 구조화 답, 모델·사용량·오류 기록이 저장된다.
 
 from __future__ import annotations
 

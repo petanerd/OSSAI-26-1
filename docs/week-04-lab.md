@@ -1,44 +1,58 @@
-# Week 4 실습 — 자동으로 만든 지시문을 검증하고 이미지 변화에 대응하기
+# Week 4 실습 — Prompt를 고치고 실제로 나아졌는지 확인하기
 
-## 이번 주에 배우는 것
+## 오늘의 수업 목표
 
-이번 주에는 NIM Gemma가 처음 지시문으로 만든 답을 Gemini가 살펴본다. Gemini는 점수가 낮은
-답을 보고 지시문을 고쳐 쓴다. NIM Gemma가 처음 지시문과 바뀐 지시문으로 같은 검증 문제에
-다시 답하면 두 점수를 비교한다. 실제 실행에서는 바뀐 지시문의 평균이 더 낮아서 처음
-지시문을 그대로 사용했다. 그다음 차트를 회전·압축·잘림·가림으로 바꾸고, 필요한 수치가
-이미지에 남아 있는지 사람이 먼저 확인한다.
+**Prompt(지시문)**는 모델에게 “무엇을 보고, 어떻게 답하라”고 알려 주는 업무 설명이다.
+**Prompt 최적화**는 실제 실패 답을 보고 이 설명을 고친 뒤, 다른 문제에서도 답이 좋아졌는지
+확인하는 과정이다. 여기서 최적화는 문장을 길게 만들거나 새 문장을 무조건 채택한다는 뜻이
+아니다.
 
-수업이 끝나면 다음 네 문장을 설명할 수 있어야 한다.
+오늘 수업은 두 부분으로 이어진다. 먼저 NIM Gemma가 만든 답과 점수를 Gemini가 읽고 새
+지시문을 제안한다. NIM Gemma가 처음 지시문과 새 지시문으로 검증 문제에 다시 답하면 두
+평균을 비교해 하나를 고른다. 그다음 선택한 지시문을 원본·변형 이미지에 적용해, 필요한
+근거가 남을 때는 답을 유지하고 근거가 사라질 때는 안전하게 답변을 보류하는지 확인한다.
 
-1. 지시문을 고치는 데 쓴 문제와 지시문을 고르는 문제를 왜 나누는지 설명한다.
-2. 처음과 변경 후의 전체 `system` 메시지를 보고 실제로 바뀐 문장을 찾는다.
-3. 같은 문제에서 NIM 답과 점수가 어떻게 달라졌는지 설명한다.
-4. 필요한 수치가 남은 이미지에는 같은 답을, 수치가 사라진 이미지에는 답변 보류를 기대한다.
+수업에서는 DeepEval `PromptOptimizer`의 GEPA 기능으로 새 지시문을 만들었다. 도구 이름보다
+중요한 원칙은 **실패를 보고 고치기 → 고칠 때 보지 않은 문제로 확인하기 → 결과가 나쁘면
+처음 지시문으로 돌아가기**다.
+
+수업이 끝나면 다음 다섯 가지를 설명할 수 있어야 한다.
+
+1. Prompt 최적화를 “실패 답을 보고 지시문을 고친 뒤, 다른 문제로 확인하는 일”이라고 설명한다.
+2. NIM Gemma는 답을 만들고 Gemini는 지시문을 제안한다는 역할 차이를 말한다.
+3. 지시문을 고치는 개발 문제와 지시문을 고르는 검증 문제를 왜 나누는지 설명한다.
+4. 실제로 바뀐 문장 하나를 찾고, 그 변화가 모델 답과 점수에 미친 영향을 확인한다.
+5. 필요한 근거가 남은 이미지에는 같은 답을, 근거가 사라진 이미지에는 답변 보류를 기대한다.
 
 이번 주의 전체 흐름은 다음과 같다.
 
 ```text
 Week 3 OpenCQA 사례 30건
-→ NIM Gemma가 development 18건의 차트 답 생성
-→ Gemini가 답·기대 답·고정 점수로 지시문 후보 작성
-→ validation 6건에서 기준선·후보 비교와 선택
-→ test 6건은 후보 생성·선택에 사용하지 않음
+→ 처음 지시문으로 NIM Gemma가 개발 문제 18개에 답함
+→ 프로그램이 답을 채점하고 빠진 값·불필요한 값을 알려 줌
+→ Gemini가 답·점수·감점 이유를 읽고 새 지시문을 제안함
+→ 처음·새 지시문으로 NIM Gemma가 검증 문제 6개에 답함
+→ 두 평균을 비교해 실제로 사용할 지시문을 선택함
+→ 공개 test 6개는 지시문 생성·선택에 사용하지 않음
 → 원본 차트와 이미지 변형 4개를 사람이 확인
-→ 근거 보존에는 답 유지, 근거 훼손에는 안전한 답변 보류를 검사
+→ 근거가 남으면 답 유지, 근거가 사라지면 안전한 답변 보류를 검사
 ```
 
-## 1. 왜 데이터와 이미지 상태를 나누는가
+실제 저장 결과에서는 새 지시문의 평균이 더 낮았다. 자동으로 고쳤지만 더 좋아지지 않았으므로
+처음 지시문을 그대로 사용했다. 이것도 Prompt 최적화에서 얻을 수 있는 올바른 결론이다.
+
+## 1. Prompt를 고치는 문제와 고른 뒤 확인하는 문제를 나누는 이유
 
 ### 두 모델의 역할
 
 | 역할 | 모델 | 하는 일 |
 | --- | --- | --- |
-| 타깃 모델 | NIM Gemma | OpenCQA JPEG와 질문을 읽고 구조화 답 생성 |
-| 최적화 검토 모델 | Gemini Flash Lite | 지시문·질문·기대 답·NIM 출력·고정 점수와 이유로 GEPA 진단·후보 작성 |
+| 답 생성 모델 | NIM Gemma | 차트와 질문을 읽고 정해 둔 JSON 모양으로 답함 |
+| 지시문 제안 모델 | Gemini Flash Lite | 처음 지시문·NIM 답·기대 답·점수와 감점 이유를 읽고 새 지시문을 제안함 |
 
-Gemini에는 OpenCQA 이미지와 사람의 변형 검토표를 보내지 않는다. Gemini가 지시문 후보를
-만들었다고 그 후보가 정답이 되지는 않는다. 최종 선택은 별도 validation의 같은 고정 점수로
-한다.
+Gemini에는 OpenCQA 이미지와 사람의 변형 검토표를 보내지 않는다. Gemini가 새 지시문을
+제안했다는 사실만으로 더 좋아졌다고 볼 수는 없다. 별도 검증 문제에서 같은 고정 점수로
+처음 지시문과 비교해 하나를 고른다.
 
 ### 세 데이터 구분
 
@@ -46,9 +60,9 @@ Week 3에서 준비한 `local-data/opencqa/week-03-cases.jsonl` 30건을 그대�
 
 | 데이터 구분 | 개수 | 이번 주의 역할 |
 | --- | ---: | --- |
-| development | 18 | DeepEval `PromptOptimizer`와 GEPA가 후보 지시문을 만드는 데 사용 |
-| validation | 6 | 기준선과 후보 가운데 하나를 선택 |
-| test | 6 | 후보 생성과 선택에 사용하지 않음 |
+| 개발(`development`) | 18 | 실패 답을 찾고 새 지시문을 만드는 데 사용 |
+| 검증(`validation`) | 6 | 처음·새 지시문 가운데 하나를 선택 |
+| 공개 test | 6 | 지시문 생성과 선택에 사용하지 않음 |
 
 공개 test 답도 같은 파일에 들어 있다. 따라서 test를 보지 못했다고 주장하지 않는다.
 `test_used_for_generation_or_selection=false`는 test 6건을 후보 생성과 선택 함수에 전달하지
@@ -64,54 +78,63 @@ Week 3에서 준비한 `local-data/opencqa/week-03-cases.jsonl` 30건을 그대�
 변형 이름만 보고 상태를 정하지 않는다. 사람이 실제 이미지를 본 결과가 변형의 의도와 다르면
 그 변형은 `invalid_variant`다. 성공이나 실패에 넣지 않고 평가에서 제외한다.
 
-## 2. 실습 준비
+## 2. 한 번의 명령으로 실습 준비하기
 
-실행 프로젝트 저장소 최상위에서 준비한다.
-
-```bash
-uv sync --locked --dev
-
-test -f local-data/opencqa/week-03-cases.jsonl
-test -d local-data/opencqa/images
-test -f prompts/week-04-baseline.md
-test -f configs/nvidia-nim-gemma4.yaml
-test -f configs/google-gemini-3.5-flash-lite-judge.yaml
-
-uv run --locked pytest tests/week4
-```
-
-마지막 명령은 API를 호출하지 않는다. 문제 30개가 18·6·6개로 나뉘었는지, 지시문 선택
-규칙이 맞는지, 이미지의 SHA-256과 사람 검토표가 연결되는지 확인한다.
-
-개인 별칭과 기록 경로를 만든다.
+실행 프로젝트 저장소 최상위에서 다음 명령을 한 번 실행한다. `minsu`만 본인의 영문·숫자
+별칭으로 바꾼다.
 
 ```bash
-STUDENT_ALIAS="course-alias"
-WEEK4_STUDENT_DIR="local-data/week-04-students/$STUDENT_ALIAS"
-WEEK4_REPORT_DIR="reports/week-04/students/$STUDENT_ALIAS"
-mkdir -p "$WEEK4_STUDENT_DIR" "$WEEK4_REPORT_DIR"
-
-test -e local-data/learning-progress.md || \
-  cp ../../templates/learner-progress-template.md local-data/learning-progress.md
+uv run --locked python scripts/prepare_week_04_lab.py --alias minsu
 ```
 
-`course-alias`는 본인의 영문·숫자 별칭으로 바꾼다. 공백이나 `/`는 쓰지 않는다.
+수강생은 Git 번호나 파일 지문을 찾아 명령에 넣지 않는다. 스크립트가
+`configs/week-04.yaml`의 `class_materials`에서 튜터가 지정한 공통 수업 자료를 읽는다. 화면에
+`수업 자료`와 `저장 응답을 만든 코드 버전`이 나오면 그 값을 새로 입력하지 말고 출처만
+확인한다.
 
-튜터가 이번 수업에서 사용할 Git SHA와 저장 결과 폴더 두 개를 알려 준다. 아래
-`RELEASE_SHA`를 튜터가 알려 준 짧은 Git SHA로 바꾼다.
+### Git SHA와 SHA-256은 왜 남길까
 
-```bash
-OPTIMIZATION_DIR="local-data/week-04-full-runs/optimization-RELEASE_SHA"
-ROBUSTNESS_DIR="local-data/week-04-full-runs/robustness-RELEASE_SHA"
-```
+모델 답은 같아 보여도 코드나 입력 파일이 바뀌면 비교 조건이 달라질 수 있다. 그래서 “어느
+코드가 이 답을 만들었는가”와 “그때 쓴 파일 내용이 지금도 같은가”를 짧은 지문으로 남긴다.
+이는 점수를 높이는 장치가 아니라 서로 다른 실행 결과를 실수로 섞지 않기 위한 이름표다.
+브랜치 이름이나 파일 이름은 같은 이름으로 내용이 바뀔 수 있지만, Git SHA와 SHA-256은 내용이
+바뀌면 함께 달라지므로 비교 기준으로 쓴다.
 
-과거 `week-03-pairs.jsonl`로 만든 `optimization/` 폴더는 이번 수업에서 쓰지 않는다. 현재
-`week-03-cases.jsonl`과 같은 입력으로 만든 결과 폴더가 없으면 튜터에게 요청한다.
+| 값 | 뜻 | 어디서 확인할까 | 수강생이 할 일 |
+| --- | --- | --- | --- |
+| `minsu` 같은 별칭 | 내 개인 폴더 이름 | 준비 명령의 `--alias` | 본인 별칭으로 바꾼다. |
+| `2102ba6` 같은 Git SHA | 공통 저장 응답을 만든 코드 버전의 앞 7자리 | 준비·결과 읽기 화면의 `저장 응답을 만든 코드 버전`; 원본 기록은 `summary.json`의 `git_sha` | 자기 Git SHA로 바꾸지 않고 출처만 확인한다. |
+| 64자리 SHA-256 | 입력·이미지·채점 파일 내용의 지문 | 자동 검사 결과; 자세한 원본 기록은 `summary.json`과 `evaluation-manifest.json` | 복사하거나 입력하지 않고 자동 일치 검사가 통과했는지 확인한다. |
+
+수강생마다 현재 작업 중인 Git SHA가 달라도 정상이다. 이 수업에서 기준으로 삼는 SHA는
+수강생 저장소의 현재 번호가 아니라, 튜터가 미리 만든 **공통 저장 응답의 출처**다. 공통 자료가
+교체되면 튜터가 설정 파일을 바꾸므로 수강생 명령은 그대로다.
+
+이 스크립트는 API를 호출하지 않는다. 다음 작업을 대신 처리한다.
+
+1. OpenCQA 문제 30개와 이미지가 있는지 확인한다.
+2. 개발 18개·검증 6개·공개 test 6개로 정확히 나뉘었는지 확인한다.
+3. 지시문 최적화 결과와 이미지 응답 5개가 모두 저장돼 있는지 확인한다.
+4. 현재 입력과 저장 실행의 SHA-256이 같은지 확인한다.
+5. 개인 작업 폴더, 개인 결과 폴더와 학습 기록 파일을 준비한다.
+
+정상이라면 `4주차 실습 준비 완료`와 함께 사용할 폴더가 화면에 나온다. 실패하면 빠진 파일이나
+맞지 않는 조건을 한글로 알려 준다. 과거 `week-03-pairs.jsonl`로 만든 결과는 이번 수업에서
+사용하지 않는다.
 
 ## 3. 실제로 지시문이 어떻게 바뀌었는지 읽기
 
 이 절에서 **기준 지시문**은 처음 사용한 지시문이다. 저장 파일에서는 `baseline`이라고 쓴다.
 **후보 지시문**은 Gemini의 제안을 반영한 새 지시문이다. 저장 파일에서는 `candidate`라고 쓴다.
+
+먼저 저장 결과를 읽기 쉬운 형태로 펼쳐 주는 스크립트를 실행한다.
+
+```bash
+uv run --locked python scripts/inspect_week_04_prompt_results.py
+```
+
+화면에는 Prompt 최적화의 뜻, 두 모델의 호출 수, 실제로 바뀐 문장, 검증 문제 6개의 점수,
+최종 선택 이유와 대표 답 두 개가 순서대로 나온다. 아래 설명은 이 출력을 한 단계씩 읽는 법이다.
 
 2026-08-18에 실제로 실행한 순서는 다음과 같다.
 
@@ -255,11 +278,8 @@ API 요청에는 Pydantic의 `StructuredAnswer`에서 만든 JSON Schema도 함�
 ```
 
 이 예상이 맞는지는 Gemini의 설명만 보고 정하지 않는다. NIM이 새 지시문으로 만든 답을
-처음 답과 직접 비교한다. 저장 파일의 전체 차이는 다음 명령으로 다시 확인한다.
-
-```bash
-diff -u prompts/week-04-baseline.md "$OPTIMIZATION_DIR/candidate-prompt.md" || true
-```
+처음 답과 직접 비교한다. 앞에서 실행한 결과의 `[지시문에서 바뀐 줄]`에는 실제로 빠진 문장과
+추가된 문장이 `-`와 `+`로 표시된다.
 
 ### 3-3. 검증 문제 6개의 실제 점수를 비교한다
 
@@ -360,17 +380,10 @@ Gemini가 만든 문장이 처음 지시문과 글자까지 완전히 같을 수
 생긴 것이 아니므로 NIM을 다시 호출하지 않는다. 저장 결과에는 `candidate_identical`이라고
 쓴다.
 
-### 3-5. 어느 파일에서 무엇을 확인할까
+### 3-5. 스크립트는 어느 파일을 읽을까
 
-다음 다섯 파일을 순서대로 연다.
-
-```bash
-test -f "$OPTIMIZATION_DIR/candidate-prompt.md"
-test -f "$OPTIMIZATION_DIR/selected-prompt.md"
-test -f "$OPTIMIZATION_DIR/validation.jsonl"
-test -f "$OPTIMIZATION_DIR/summary.json"
-test -f "$OPTIMIZATION_DIR/calls.jsonl"
-```
+`inspect_week_04_prompt_results.py`는 다음 다섯 파일을 순서대로 읽는다. 학습자는 파일을 찾는
+명령을 따로 입력하지 않아도 된다.
 
 1. `candidate-prompt.md`: Gemini의 제안을 반영해 바뀐 지시문
 2. `validation.jsonl`: 문제 6개의 처음 답·바뀐 답·점수와 감점 이유
@@ -378,15 +391,9 @@ test -f "$OPTIMIZATION_DIR/calls.jsonl"
 4. `summary.json`: 두 평균과 처음 지시문을 선택한 이유
 5. `calls.jsonl`: NIM 45회와 Gemini 4회의 실제 응답, 사용 token, 걸린 시간과 오류
 
-먼저 저장 결과가 이번 수업 파일로 만든 것인지 확인한다. SHA-256은 파일 내용으로 만든
-고유한 문자열이다. 입력 파일이 바뀌면 이 문자열도 바뀐다.
-
-```bash
-shasum -a 256 local-data/opencqa/week-03-cases.jsonl
-rg -n '"(status|observed_status|git_sha|development_count|validation_count|test_count|test_used_for_generation_or_selection|baseline_mean|candidate_mean|candidate_changed|selected|selection_reason|requested_model|expected_actual_model|provider_error_count|model_drift_count)"' \
-  "$OPTIMIZATION_DIR/summary.json"
-rg -n 'week-03-cases.jsonl' "$OPTIMIZATION_DIR/summary.json"
-```
+준비 스크립트는 저장 결과가 이번 수업 입력으로 만든 것인지 먼저 확인한다. 수강생이 비교할
+문자열을 직접 찾을 필요는 없다. 스크립트가 저장 결과의 SHA-256과 현재 파일의 SHA-256을
+계산해 같으면 통과하고, 다르면 어느 조건이 맞지 않는지 알려 준다.
 
 화면에 나온 영문 필드는 다음 뜻이다.
 
@@ -398,20 +405,13 @@ rg -n 'week-03-cases.jsonl' "$OPTIMIZATION_DIR/summary.json"
 - `selection_reason=validation_not_improved`: 후보 평균이 오르지 않아 처음 지시문을 골랐다.
 - `provider_error_count=0`: API 호출 실패가 없었다.
 - `model_drift_count=0`: 요청한 모델과 실제 응답한 모델이 달랐던 경우가 없었다.
-- `artifact_sha256.week-03-cases.jsonl`: 실행에 사용한 입력 파일의 SHA-256이다. 현재 파일의
-  SHA-256과 같아야 한다.
+- `git_sha`: 이 저장 답을 만든 코드 버전이다. 내 현재 Git SHA와 같아야 하는 값은 아니다.
+- `artifact_sha256.week-03-cases.jsonl`: 실행에 사용한 입력 파일의 SHA-256이다. 준비 스크립트가
+  현재 파일과 자동으로 비교하므로 수강생이 값을 복사해 대조하지 않는다.
 
-그다음 바뀐 문장, 문제별 모델 답 12개와 최종 지시문을 확인한다.
-
-```bash
-diff -u prompts/week-04-baseline.md "$OPTIMIZATION_DIR/candidate-prompt.md" || true
-sed -n '1,12p' "$OPTIMIZATION_DIR/validation.jsonl"
-diff -u prompts/week-04-baseline.md "$OPTIMIZATION_DIR/selected-prompt.md" || true
-```
-
-마지막 `diff`에 아무 내용도 나오지 않아야 한다. `selected-prompt.md`와 처음 지시문이 같다는
-뜻이다. `status=pass`는 실행이 끝나고 파일이 모두 생겼다는 뜻이다. 바뀐 지시문이 선택됐거나
-모델 답이 모두 좋다는 뜻은 아니다.
+결과 읽기 스크립트는 바뀐 문장과 문제별 점수를 사람이 읽을 수 있는 표로 바꿔 보여 준다.
+이번 실행의 `selected-prompt.md`는 처음 지시문과 같다. `status=pass`는 실행이 끝나고 파일이
+모두 생겼다는 뜻이다. 새 지시문이 선택됐거나 모델 답이 모두 좋다는 뜻은 아니다.
 
 이 숫자는 2026-08-18에 저장한 실행의 예시다. 수업 코드나 입력 파일이 바뀌면 현재
 `summary.json`의 숫자를 사용한다. 다음 표를 `local-data/learning-progress.md`의 Week 4에
@@ -429,14 +429,7 @@ diff -u prompts/week-04-baseline.md "$OPTIMIZATION_DIR/selected-prompt.md" || tr
 
 ### 3-6. 지시문을 바꾸자 모델 답이 어떻게 달라졌는지 따라가 본다
 
-점수가 오른 `5978`과 점수가 떨어진 `699`를 찾는다.
-
-```bash
-rg -n '"sample_id": "5978"' \
-  local-data/opencqa/week-03-cases.jsonl "$OPTIMIZATION_DIR/validation.jsonl"
-rg -n '"sample_id": "699"' \
-  local-data/opencqa/week-03-cases.jsonl "$OPTIMIZATION_DIR/validation.jsonl"
-```
+앞에서 실행한 스크립트의 `[점수가 오른 사례: 5978]`과 `[점수가 떨어진 사례: 699]`를 찾는다.
 
 각 문제에는 질문과 사람이 쓴 기준 답 한 줄이 있다. `validation.jsonl`에는 처음 지시문으로
 만든 NIM 답과 바뀐 지시문으로 만든 NIM 답이 한 줄씩 있다. 세 줄을 같은 `sample_id`로
@@ -461,13 +454,11 @@ rg -n '"sample_id": "699"' \
 호출하지 않는다.
 
 ```bash
-STUDENT_VARIANT_DIR="$WEEK4_STUDENT_DIR/variants"
-test ! -e "$STUDENT_VARIANT_DIR"
-
-uv run --locked python scripts/generate_image_variants.py \
-  --pair-number 1 \
-  --output "$STUDENT_VARIANT_DIR"
+uv run --locked python scripts/generate_image_variants.py --student-alias minsu
 ```
+
+`minsu`는 준비 단계에서 사용한 본인 별칭으로 바꾼다. 스크립트 위쪽의 주석에는 실행 목적과
+정상적으로 만들어지는 파일이 적혀 있다. 같은 폴더에 결과가 이미 있으면 덮어쓰지 않고 멈춘다.
 
 `case.json`의 `original_image`와 다음 네 파일을 편집기에서 직접 연다.
 
@@ -477,8 +468,9 @@ uv run --locked python scripts/generate_image_variants.py \
 - `occlude-answer.png`: 왼쪽 일부를 회색으로 가림
 
 질문의 대상·기간·수치와 비교 대상을 먼저 찾는다. 그 근거가 남아 있으면 `preserved`, 찾을 수
-없으면 `destroyed`를 개인 `variant-review.csv`의 `grounding_status`에 쓴다. 다른 열과
-SHA-256은 바꾸지 않는다.
+없으면 `destroyed`를 개인 `variant-review.csv`의 `grounding_status`에 쓴다. 다른 열은
+프로그램이 이미지와 행을 연결하는 정보이므로 바꾸지 않는다. 특히 SHA-256 열은 직접 입력하는
+답이 아니다.
 
 ```text
 preserved 또는 destroyed만 입력
@@ -486,33 +478,24 @@ preserved 또는 destroyed만 입력
 변형 이름이 아니라 실제 이미지로 판단
 ```
 
-개인 변형은 이미지를 보고 판단하는 연습 자료다. 튜터가 저장한 NIM 답이 어느 이미지에서
-나왔는지는 실행 결과 폴더의 `variants.jsonl`, `variant-review.csv`, `summary.json`에 적힌
-SHA-256으로 확인한다.
+개인 변형은 이미지를 보고 판단하는 연습 자료다. 튜터가 저장한 NIM 답과 개인 이미지가 같은
+내용인지는 다음 평가 명령이 SHA-256으로 자동 확인한다. 오류가 없으면 같은 이미지다. 값 자체를
+찾거나 옮겨 적을 필요는 없다.
 
-## 5. 저장된 이미지 견고성 결과 다시 계산하기
+## 5. 저장된 이미지 답을 같은 규칙으로 다시 채점하기
 
 튜터가 수업 전에 저장한 결과는 같은 지시문으로 원본 이미지 1개와 바꾼 이미지 4개를 NIM에
 실제로 보낸 결과다.
 
-```bash
-test -f local-data/opencqa/week-04-variants/case.json
-test -f local-data/opencqa/week-04-variants/variants.jsonl
-test -f local-data/opencqa/week-04-variants/variant-review.csv
-test -f "$ROBUSTNESS_DIR/responses.jsonl"
-test -f "$ROBUSTNESS_DIR/calls.jsonl"
-test -f "$ROBUSTNESS_DIR/summary.json"
-test -f "$ROBUSTNESS_DIR/evaluation.json"
-test -f "$ROBUSTNESS_DIR/evaluation-manifest.json"
-```
-
-API를 다시 호출하지 않고 같은 응답을 현재 채점기로 계산한다.
+개인 `variant-review.csv`의 네 칸을 모두 채운 뒤 다음 명령을 실행한다. API를 다시 호출하지
+않고, 튜터가 저장한 응답을 현재 채점기로 계산한다.
 
 ```bash
-uv run --locked python scripts/evaluate_image_robustness.py \
-  --responses "$ROBUSTNESS_DIR/responses.jsonl" \
-  --output "$WEEK4_REPORT_DIR/evaluation.json"
+uv run --locked python scripts/evaluate_image_robustness.py --student-alias minsu
 ```
+
+`minsu`는 본인 별칭으로 바꾼다. 정상이라면 화면에 `통과`, `실패`, `판정 불가`, `변형 무효`
+개수가 나온다. 필요한 파일이 없거나 검토표에 빈칸이 있으면 무엇을 고쳐야 하는지 알려 준다.
 
 다음 순서로 결과를 읽는다.
 
@@ -522,13 +505,14 @@ uv run --locked python scripts/evaluate_image_robustness.py \
    `passed / failed / inconclusive / invalid_variant`
 4. 개인 `evaluation-manifest.json`: 응답·이미지·검토표·채점 규칙·출력 형식의 SHA-256
 
-`source_git_sha`는 저장된 NIM 답을 만들 때 사용한 코드 버전이다. `scorer_sha256`은 그 답을
-지금 채점한 Python 파일의 SHA-256이다. NIM을 다시 호출하지 않고 채점 규칙만 고쳤다면 두
-값이 다를 수 있다.
+`source_git_sha`는 저장된 NIM 답을 만들 때 사용한 코드 버전이다. 수강생이 바꿀 값이 아니라
+“이 답은 어느 코드에서 나왔는가”를 추적하는 기록이다. `scorer_sha256`은 그 답을 지금 채점한
+Python 파일의 내용 지문이다. NIM을 다시 호출하지 않고 채점 규칙만 고쳤다면 저장 응답의 Git
+SHA는 그대로이고 채점기 SHA-256만 바뀔 수 있다.
 
-근거가 보존된 변형은 원본과 변형 모두 점수 0.8 이상이고, 근거가 있으며, 원본 답의 숫자를
+근거가 남은 변형은 원본과 변형 모두 점수 0.8 이상이고, 근거가 있으며, 원본 답의 숫자를
 유지해야 한다. 원본 품질이 0.8 미만이면 변형 답이 같아도 정답 유지를 확인할 수 없어
-`inconclusive`다. 근거가 훼손된 변형은 `abstained=true`, 빈 근거와 보류 이유를 가져야 한다.
+`inconclusive`다. 근거가 사라진 변형은 `abstained=true`, 빈 근거와 보류 이유를 가져야 한다.
 두 상태를 하나의 정답 유지율로 합치지 않는다.
 
 같은 날 NIM 실제 응답 5건은 모두 정해 둔 JSON 모양을 지켰다. API 호출 오류도 없었고 요청한
@@ -560,9 +544,11 @@ uv run --locked python scripts/evaluate_image_robustness.py \
 
 다음 세 경로를 보존한다.
 
-1. `$WEEK4_STUDENT_DIR/variants/variant-review.csv`: 직접 판정한 네 행
-2. `$WEEK4_REPORT_DIR/evaluation.json`: 튜터 저장 응답을 현재 채점기로 계산한 결과
+1. `local-data/week-04-students/minsu/variants/variant-review.csv`: 직접 판정한 네 행
+2. `reports/week-04/students/minsu/evaluation.json`: 튜터 저장 응답을 현재 채점기로 계산한 결과
 3. `local-data/learning-progress.md`: 데이터 분할, 선택 이유와 주장할 수 없는 범위
+
+위 두 경로의 `minsu`는 본인 별칭이다.
 
 학습 기록에는 다음 문장을 본인의 결과에 맞게 완성한다.
 
@@ -577,12 +563,13 @@ API key, `.env`, OpenCQA 원본과 튜터가 저장한 실제 실행 폴더는 �
 
 ## 완료 기준
 
-- development·validation·공개 test의 역할을 설명했다.
-- 현재 `week-03-cases.jsonl`과 저장 최적화 결과의 SHA-256이 같은 입력을 가리키는지 확인했다.
-- validation 평균이 높지 않으면 기준선을 유지하는 코드를 확인했다.
-- 기준과 후보 지시문의 실제 변경 문장을 설명했다.
+- 개발·검증·공개 test의 역할을 설명했다.
+- 준비 스크립트가 현재 `week-03-cases.jsonl`과 저장 결과의 SHA-256을 자동 비교해 같은 입력임을
+  확인했다.
+- 검증 평균이 높지 않으면 처음 지시문을 유지하는 코드를 확인했다.
+- 처음·새 지시문에서 실제로 달라진 문장을 설명했다.
 - 점수가 오른 사례와 떨어진 사례에서 모델 답·점수·감점 이유를 같은 `sample_id`로 연결했다.
-- 원본과 변형 네 개를 직접 보고 근거 보존·훼손을 판정했다.
+- 원본과 변형 네 개를 직접 보고 질문에 필요한 근거가 남았는지 사라졌는지 판정했다.
 - 저장 VLM 응답 5개를 다시 채점하고 실패 이유를 한 사례에서 연결했다.
 - 잘못 만든 이미지(`invalid_variant`), 모델 답 실패(`fail`), 원본 답 또는 API 문제로 판단할
   수 없는 경우(`inconclusive`)를 구분했다.

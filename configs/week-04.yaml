@@ -1,3 +1,10 @@
+# 수강생이 직접 바꾸는 값이 아니다. 튜터가 수업 전에 검증한 저장 결과 두 폴더를 지정한다.
+# 폴더 이름에 Git SHA가 들어가도 수강생 명령에는 입력하지 않는다.
+class_materials:
+  label: 2026-08-18 수업용 저장 결과
+  prompt_optimization_dir: local-data/week-04-full-runs/optimization-2102ba6
+  image_response_dir: local-data/week-04-full-runs/robustness-2102ba6
+
 optimizer:
   iterations: 2
   minibatch_size: 4

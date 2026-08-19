@@ -1,4 +1,5 @@
-"""DeepEval PromptOptimizer(GEPA)로 prompt를 만들고 validation 6개에서 비교한다."""
+# 목적: 개발 문제의 실패 답으로 새 지시문을 만들고 검증 문제에서 처음 지시문과 비교한다.
+# 기대 결과: 후보·선택 지시문, 검증 점수, 두 모델의 호출 기록과 선택 이유가 저장된다.
 
 from __future__ import annotations
 

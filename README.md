@@ -10,8 +10,9 @@
 - Week 3: 각 학습자가 같은 NIM Gemma에 기준·개선 지시문을 적용해 OpenCQA 실제 답 30개씩을
   만든다. 두 답을 익명 A/B 30쌍으로 묶고 배정된 1쌍의 사람 판단을 먼저 잠근 뒤, Gemini
   3.5 Flash Lite Judge를 두 번·양방향으로 실행한다.
-- Week 4: NIM Gemma 답을 Gemini GEPA 검토로 개선하고 validation에서 선택한 뒤 이미지 변형을
-  평가한다.
+- Week 4: Prompt 최적화를 배운다. NIM Gemma가 개발 문제에 답하면 Gemini가 낮은 점수의
+  원인을 읽고 지시문을 고쳐 쓴다. 검증 문제 6개에서 처음·새 지시문을 비교한 뒤 이미지
+  변형을 평가한다.
 - Week 5 이후: 도구 호출과 CI를 같은 작업 흐름에 추가한다.
 
 처음 실습한다면 [Week 1 실습](docs/week-01-lab.md),
@@ -37,7 +38,7 @@ Week 1–2는 전체 평균을 보기 전에 대표 사례 한 건을 다음 순
 | Week 1 | `uv run --locked python scripts/inspect_deterministic_scoring_case.py` | 한 답이 왜 통과하거나 실패하는지 |
 | Week 2 | `uv run --locked python scripts/inspect_prompt_comparison_case.py` | 미리 준비한 같은 모델의 기준·후보 응답과 점수 차이 |
 | Week 3 | `uv run --locked python scripts/inspect_judge_pair.py --candidates "$CANDIDATE_RESULTS" --number "$PAIR_NUMBER"` | 개인 후보 생성 뒤, 결과 공개 전에 사람이 판단할 차트·질문·후보 한 쌍 |
-| Week 4 | `uv run --locked python scripts/generate_image_variants.py --pair-number 1` | 원본과 근거 보존·훼손 변형 네 개 |
+| Week 4 | `uv run --locked python scripts/generate_image_variants.py --pair-number 1` | 원본과, 질문에 필요한 수치가 남거나 사라진 변형 네 개 |
 
 위 명령들은 외부 API를 호출하지 않는다. Week 1–2의 Git 고정 응답은 코드 학습과 회귀검사용
 `test_only`다. Week 3 명령은 [Week 3 실습](docs/week-03-lab.md)에서 만든 개인 후보 경로와 배정
