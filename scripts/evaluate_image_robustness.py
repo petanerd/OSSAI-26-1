@@ -91,13 +91,29 @@ def main() -> int:
         if source_summary_path.is_file()
         else {}
     )
+    stored_hashes = source_summary.get("artifact_sha256", {})
+    response_inputs = {
+        "responses.jsonl": responses_path,
+        "case.json": case_path,
+        "variants.jsonl": variants_path,
+        "variant-review.csv": reviews_path,
+    }
+    if not args.student_alias and (
+        not stored_hashes
+        or any(
+            stored_hashes.get(name) != _sha256(path)
+            for name, path in response_inputs.items()
+        )
+    ):
+        raise SystemExit(
+            "이미지 응답을 만들 때 기록한 SHA-256과 현재 평가 입력의 SHA-256이 다릅니다"
+        )
     if args.student_alias:
         canonical_artifacts = [
             VariantArtifact.model_validate_json(line)
             for line in (DEFAULT_ROOT / "variants.jsonl").read_text().splitlines()
             if line.strip()
         ]
-        stored_hashes = source_summary.get("artifact_sha256", {})
         if (
             not _same_variant_inputs(
                 artifacts,

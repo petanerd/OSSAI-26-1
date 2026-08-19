@@ -87,14 +87,14 @@ def _require_current_pair(case: dict) -> None:
         raise SystemExit("Week 4 case가 현재 OpenCQA pair identity와 다릅니다")
 
 
-def _artifact_sha256(output: Path) -> dict[str, str | None]:
+def _artifact_sha256(output: Path, variants_dir: Path) -> dict[str, str | None]:
     paths = {
         "calls.jsonl": output / "calls.jsonl",
         "responses.jsonl": output / "responses.jsonl",
         "week-03-cases.jsonl": CASES,
-        "case.json": VARIANT_ROOT / "case.json",
-        "variants.jsonl": VARIANT_ROOT / "variants.jsonl",
-        "variant-review.csv": VARIANT_ROOT / "variant-review.csv",
+        "case.json": variants_dir / "case.json",
+        "variants.jsonl": variants_dir / "variants.jsonl",
+        "variant-review.csv": variants_dir / "variant-review.csv",
     }
     return {name: _sha256(path) if path.is_file() else None for name, path in paths.items()}
 
@@ -110,6 +110,7 @@ def main() -> int:
     parser.add_argument("--max-wall-seconds", type=float, required=True)
     parser.add_argument("--catalog-verified-on", type=date.fromisoformat, required=True)
     parser.add_argument("--pricing-verified-on", type=date.fromisoformat, required=True)
+    parser.add_argument("--variants-dir", type=Path, default=VARIANT_ROOT)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if not args.live:
@@ -142,11 +143,12 @@ def main() -> int:
     if args.output.exists() and any(args.output.iterdir()):
         raise SystemExit(f"비어 있지 않은 출력 폴더입니다: {args.output}")
 
-    case = json.loads((VARIANT_ROOT / "case.json").read_text(encoding="utf-8"))
+    variants_dir = args.variants_dir
+    case = json.loads((variants_dir / "case.json").read_text(encoding="utf-8"))
     _require_current_pair(case)
     variants = [
         VariantArtifact.model_validate_json(line)
-        for line in (VARIANT_ROOT / "variants.jsonl").read_text().splitlines()
+        for line in (variants_dir / "variants.jsonl").read_text().splitlines()
         if line.strip()
     ]
     if len(variants) != 4:
@@ -157,15 +159,24 @@ def main() -> int:
     if _sha256(original_image) != case["original_image_sha256"]:
         raise SystemExit("원본 이미지 bytes가 Week 4 case와 다릅니다")
     load_reviews(
-        VARIANT_ROOT / "variant-review.csv",
+        variants_dir / "variant-review.csv",
         variants,
         project_root=PROJECT_ROOT,
         source_path=original_image,
     )
+    source_hashes = _artifact_sha256(args.output, variants_dir)
+    source_names = (
+        "week-03-cases.jsonl",
+        "case.json",
+        "variants.jsonl",
+        "variant-review.csv",
+    )
     images = [("original", original_image)] + [
         (item.variant_id, PROJECT_ROOT / item.image_path) for item in variants
     ]
-    prompt = Prompt(text_template=args.prompt.read_text(encoding="utf-8"))
+    prompt_bytes = args.prompt.read_bytes()
+    prompt_sha256 = hashlib.sha256(prompt_bytes).hexdigest()
+    prompt = Prompt(text_template=prompt_bytes.decode("utf-8"))
     instruction = prompt.interpolate(question=case["question"])
     settings = load_settings(PROJECT_ROOT / "configs/nvidia-nim-gemma4.yaml")
     load_project_env(PROJECT_ROOT)
@@ -236,7 +247,13 @@ def main() -> int:
     provider_error_count, model_drift_count = summarize_call_failures(
         call_records, provider.expected_actual_model
     )
-    complete = record_count == 5 and run_error is None
+    artifact_hashes = _artifact_sha256(args.output, variants_dir)
+    input_changed = (
+        (_sha256(args.prompt) if args.prompt.is_file() else None) != prompt_sha256
+        or any(artifact_hashes[name] != source_hashes[name] for name in source_names)
+    )
+    artifact_hashes.update({name: source_hashes[name] for name in source_names})
+    complete = record_count == 5 and run_error is None and not input_changed
     summary = {
         "status": (
             "inconclusive"
@@ -249,14 +266,14 @@ def main() -> int:
             else "pass"
         ),
         "observed_status": (
-            "complete" if complete else "partial" if record_count else "inconclusive"
+            "complete" if complete else "partial" if record_count else "not_run"
         ),
         "evidence_kind": "live_quality",
         "git_sha": git_sha,
         "catalog_verified_on": args.catalog_verified_on.isoformat(),
         "billing_basis": settings.provider.billing_basis,
         "structured_output": provider.structured_output,
-        "prompt_sha256": _sha256(args.prompt),
+        "prompt_sha256": prompt_sha256,
         "schema_sha256": _sha256(
             PROJECT_ROOT / "src/verifiable_ai_workflow/schemas/models.py"
         ),
@@ -289,17 +306,24 @@ def main() -> int:
         if responses_path.is_file()
         else [],
         "budget": provider.budget.summary(),
-        "artifact_sha256": _artifact_sha256(args.output),
+        "input_changed_during_run": input_changed,
+        "artifact_sha256": artifact_hashes,
     }
     if run_error is not None:
         summary["error_type"] = type(run_error).__name__
         summary["error_message"] = str(run_error)
+    elif input_changed:
+        summary["error_type"] = "InputChangedDuringRun"
+        summary["error_message"] = "실행 중 지시문 또는 입력 파일이 바뀌었습니다"
     (args.output / "summary.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
     if run_error:
         print(f"이미지 견고성 실행이 중단됐습니다: 완료={record_count}/5")
+        return 2
+    if input_changed:
+        print("실행 중 입력이 바뀌어 결과를 partial로 저장했습니다")
         return 2
     print("원본 1개와 변형 4개의 VLM 응답을 저장했습니다")
     return 0

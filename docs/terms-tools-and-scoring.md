@@ -31,8 +31,8 @@ JSON 필드처럼 코드로 확인할 수 있는 항목은 모델 기반 채점�
 | python-dotenv | Git에 저장하지 않는 `.env`의 API 키를 읽는다. | Week 1 |
 | pytest·Ruff | API 없이 코드 동작과 형식을 검사한다. | Week 1 |
 
-라이브러리는 설치해 사용하는 기능 묶음이다. `scripts/`에는 학습자 분석·Week 2·3 개인 full
-명령과 튜터의 자료 준비·대표 live 명령이 있고, `src/verifiable_ai_workflow/`에는 이 명령들이
+라이브러리는 설치해 사용하는 기능 묶음이다. `scripts/`에는 학습자용 분석 명령과 Week 2–4 개인
+전체 실행 명령, 튜터의 자료 준비·대표 live 명령이 있고, `src/verifiable_ai_workflow/`에는 이 명령들이
 재사용하는 실제 구현이 있다. 누가 어떤 명령을 실행하는지는 주차 실습서와 튜터 runbook에서
 구분한다.
 

@@ -298,11 +298,11 @@ def main() -> int:
             "observed_status": (
                 "partial"
                 if any(call.get("response_received_at") for call in call_records)
-                else "inconclusive"
+                else "not_run"
             ),
             "evidence_kind": "live_quality",
             "git_sha": git_sha,
-            "run_mode": "classroom_demo" if args.demo_samples else "full_class_material",
+            "run_mode": "classroom_demo" if args.demo_samples else "full_evaluation",
             "demo_sample_count": args.demo_samples,
             "quality_selection_allowed": not bool(args.demo_samples),
             "development_count": 18,
@@ -462,6 +462,7 @@ def main() -> int:
         "observed_status": "complete",
         "evidence_kind": "live_quality",
         "git_sha": git_sha,
+        "run_mode": "full_evaluation",
         "development_count": 18,
         "validation_count": 6,
         "test_count": 6,

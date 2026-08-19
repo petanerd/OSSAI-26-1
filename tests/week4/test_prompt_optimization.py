@@ -224,6 +224,96 @@ def test_week_04_inspector_finds_prompt_and_score_changes() -> None:
     assert (best["sample_id"], worst["sample_id"]) == ("up", "down")
 
 
+def test_week_04_inspector_handles_identical_candidate(
+    monkeypatch, tmp_path: Path
+) -> None:
+    result_dir = tmp_path / "result"
+    (tmp_path / "prompts").mkdir()
+    (tmp_path / "local-data/opencqa").mkdir(parents=True)
+    result_dir.mkdir()
+    baseline = "same {question}\n"
+    (tmp_path / "prompts/week-04-baseline.md").write_text(baseline, encoding="utf-8")
+    (tmp_path / "local-data/opencqa/week-03-cases.jsonl").write_text(
+        "placeholder\n", encoding="utf-8"
+    )
+    (result_dir / "candidate-prompt.md").write_text(baseline, encoding="utf-8")
+    (result_dir / "selected-prompt.md").write_text(baseline, encoding="utf-8")
+    (result_dir / "calls.jsonl").write_text(
+        '{"provider_role":"target"}\n{"provider_role":"optimizer"}\n',
+        encoding="utf-8",
+    )
+    (result_dir / "validation.jsonl").write_text(
+        "".join(
+            json.dumps(
+                {
+                    "sample_id": str(index),
+                    "prompt": "baseline",
+                    "score": 0.5,
+                    "output": "{}",
+                }
+            )
+            + "\n"
+            for index in range(6)
+        ),
+        encoding="utf-8",
+    )
+    summary = {
+        "selected": "baseline",
+        "git_sha": "a" * 40,
+        "observed_status": "complete",
+        "development_count": 18,
+        "validation_count": 6,
+        "test_count": 6,
+        "test_used_for_generation_or_selection": False,
+        "target_provider": {
+            "requested_model": "nim",
+            "actual_models": ["nim"],
+        },
+        "optimizer_provider": {
+            "requested_model": "gemini",
+            "actual_models": ["gemini"],
+        },
+        "provider_error_count": 0,
+        "model_drift_count": 0,
+        "selection_reason": "candidate_identical",
+        "baseline_mean": 0.5,
+        "candidate_mean": None,
+        "candidate_changed": False,
+        "artifact_sha256": {
+            name: inspect_week_04_prompt_results._sha256(path)
+            for name, path in {
+                "calls.jsonl": result_dir / "calls.jsonl",
+                "validation.jsonl": result_dir / "validation.jsonl",
+                "candidate-prompt.md": result_dir / "candidate-prompt.md",
+                "selected-prompt.md": result_dir / "selected-prompt.md",
+                "week-03-cases.jsonl": (
+                    tmp_path / "local-data/opencqa/week-03-cases.jsonl"
+                ),
+            }.items()
+        },
+    }
+    (result_dir / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
+    monkeypatch.setattr(
+        inspect_week_04_prompt_results,
+        "load_week4_class_materials",
+        lambda project_root: SimpleNamespace(
+            label="test", prompt_optimization_dir=result_dir
+        ),
+    )
+    monkeypatch.setattr(
+        inspect_week_04_prompt_results, "load_open_cqa_cases", lambda path: []
+    )
+
+    output = inspect_week_04_prompt_results.inspect(tmp_path, Path("result"))
+
+    assert "새 지시문 평균: 지시문이 같아 실행하지 않음" in output
+    assert "지시문이 같아 새 답을 만들지 않았습니다." in output
+
+    (result_dir / "validation.jsonl").write_text("changed\n", encoding="utf-8")
+    with pytest.raises(SystemExit, match="SHA-256"):
+        inspect_week_04_prompt_results.inspect(tmp_path, Path("result"))
+
+
 @pytest.mark.parametrize(
     ("catalog_date", "pricing_date"),
     [
@@ -415,7 +505,8 @@ def test_optimizer_connection_error_without_response_is_inconclusive(
     assert optimize_open_cqa_prompt.main() == 2
     summary = json.loads((output / "summary.json").read_text(encoding="utf-8"))
     assert summary["status"] == "inconclusive"
-    assert summary["observed_status"] == "inconclusive"
+    assert summary["observed_status"] == "not_run"
+    assert summary["run_mode"] == "full_evaluation"
     assert summary["error_type"] == "RuntimeError"
     assert summary["source_revision"] == "a" * 40
     assert len(summary["split_sample_ids"]["test"]) == 6

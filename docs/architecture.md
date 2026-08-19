@@ -47,18 +47,19 @@ Judge 설정은 공개 한도 15 RPM·입력 250,000 TPM·500 RPD보다 낮은 1
 더해진다. Free Tier로 보낸 자료가 제품 개선에 사용될 수 있다는 조건도 확인한다. 승인은 실행
 성공 기록이 아니므로 새 결과의 완결 검사는 따로 통과해야 한다.
 
-## Week 2–3 개인 결과 위치
+## Week 2–4 개인 결과 위치
 
 | 주차 | 작성 입력 | 개인 실행 결과 | 비교·해석 |
 | --- | --- | --- | --- |
 | Week 2 | `local-data/week-02-students/<alias>/prompt.md` | `reports/week-02-gemma-baseline/runs/`의 고유 폴더 | `reports/week-02/students/<alias>/` 비교 JSON |
 | Week 3 | `local-data/week-03-student-judges/<alias>/human-label.yaml` | `reports/week-03/student-full/<alias-시각>/candidates/`의 NIM 후보, `judge/`의 Gemini 판단·비교 | `local-data/week-03-student-judges/<alias>/interpretation.md` |
+| Week 4 | `local-data/week-04-students/<alias>/variants/variant-review.csv` | `reports/week-04/student-full/<alias-시각>/optimization/`의 지시문 결과, `robustness/`의 이미지 응답·평가 | `local-data/learning-progress.md`의 실행 상태·지시문 선택 결과·실패 원인 |
 
 저장된 Week 2 개선·provider 결과는 설명 예시와 실패 fallback으로만 쓴다. 과거 OpenCQA
 `abstractive_answer / extractive_answer` 후보·NIM Judge·Codex 합성 기준 결과는 legacy이며,
 새 Week 3 입력이나 fallback이 아니다. 개인 실행이 `partial / not_run`이어도 완료로 바꾸지
-않는다. 전체 명령은
-[Week 2 실습](week-02-lab.md)과 [Week 3 실습](week-03-lab.md)에만 둔다.
+않는다. 전체 명령은 [Week 2 실습](week-02-lab.md), [Week 3 실습](week-03-lab.md)과
+[Week 4 실습](week-04-lab.md)에만 둔다.
 
 ## 내부 코드
 

@@ -550,15 +550,163 @@ SHA는 그대로이고 채점기 SHA-256만 바뀔 수 있다.
 잘림·가림은 둘 다 안전하게 답변을
 보류해 `passed`였다. 결과는 통과 2, 실패 1, 판정 불가 2, 변형 무효 0이다.
 
-## 7. 제출
+## 7. 수업 후 개인 전체 실행하기
 
-다음 세 경로를 보존한다.
+수업에서는 개발 사례 2건으로 지시문 생성 과정을 살펴보았다. 지시문 선택 방법은 튜터가
+미리 실행한 전체 결과로 배웠다. 수업 후에는 같은 수업 release에서 본인 API key로 전체 과정을
+실행한다. 튜터가 저장한 결과와 수업 중 2건 시연은 개인 전체 실행을 대신하지 않는다.
+
+### 7-1. 실행 전 확인
+
+다음 조건을 모두 확인한 뒤에만 실제 API를 호출한다.
+
+1. 수업에서 사용한 release를 checkout했고 `git status --porcelain` 출력이 비어 있다.
+2. `local-data/opencqa/week-03-cases.jsonl` 30건과 5절에서 만든 개인 이미지 변형이 있다.
+3. 개인 `variant-review.csv`의 네 행을 모두 판정했다.
+4. NVIDIA와 Google에 보낼 자료와 실행 당일의 모델·가격·quota·데이터 이용 조건을 확인했다.
+5. 본인의 NVIDIA·Google API key를 사용하며 다른 사람과 key를 공유하지 않는다.
+
+```bash
+git status --porcelain
+uv run --locked python scripts/check_week_04_api_keys.py
+uv run --locked python scripts/preflight_nvidia.py \
+  --config configs/nvidia-nim-gemma4.yaml
+```
+
+학습자 한 명의 최대 사용량은 다음과 같다. 이 값은 목표 횟수가 아니라 실행 전에 정한 중단
+상한이다.
+
+| 모델 역할 | 요청·시도 상한 | 입력·출력 token 상한 | 관리용 비용·시간 상한 |
+| --- | --- | --- | --- |
+| NIM 답 생성과 이미지 5건 | 요청·시도 50/50회 | 입력 1,000,000·출력 25,000 | $0.02·최대 2시간 15분 |
+| Gemini 지시문 검토 | 요청 4회·시도 8회 | 입력 40,000·출력 16,000 | $0.01·최대 2시간 |
+
+승인, key, quota 중 하나라도 준비되지 않으면 호출하지 않는다. 학습 진행표에는 `not_run`과
+사유, 다시 실행할 날짜를 적는다.
+
+### 7-2. 개인 폴더에서 전체 지시문 최적화 실행
+
+실행 프로젝트 저장소 최상위에서 아래 명령을 실행한다. `minsu`만 본인 별칭으로 바꾼다.
+같은 별칭으로 다시 실행해도 실행 시각이 달라 새 폴더가 생긴다.
+
+```bash
+STUDENT_ALIAS=minsu
+RUN_ID=$(date +%Y%m%d-%H%M%S)
+STUDENT_RUN_DIR="reports/week-04/student-full/${STUDENT_ALIAS}-${RUN_ID}"
+OPTIMIZATION_RUN_DIR="$STUDENT_RUN_DIR/optimization"
+ROBUSTNESS_RUN_DIR="$STUDENT_RUN_DIR/robustness"
+VARIANTS_DIR="local-data/week-04-students/$STUDENT_ALIAS/variants"
+NIM_CATALOG_DATE=$(date +%F)
+NIM_PRICING_DATE=$(date +%F)
+GEMINI_MODEL_DATE=$(date +%F)
+GEMINI_PRICING_DATE=$(date +%F)
+
+uv run --locked python scripts/optimize_open_cqa_prompt.py \
+  --live-optimize \
+  --max-requests 45 \
+  --max-input-tokens 900000 \
+  --max-output-tokens 22500 \
+  --max-cost-usd 0.01 \
+  --max-wall-seconds 7200 \
+  --catalog-verified-on "$NIM_CATALOG_DATE" \
+  --pricing-verified-on "$NIM_PRICING_DATE" \
+  --optimizer-max-requests 4 \
+  --optimizer-max-attempts 8 \
+  --optimizer-max-input-tokens 40000 \
+  --optimizer-max-output-tokens 16000 \
+  --optimizer-max-cost-usd 0.01 \
+  --optimizer-max-wall-seconds 7200 \
+  --optimizer-catalog-verified-on "$GEMINI_MODEL_DATE" \
+  --optimizer-pricing-verified-on "$GEMINI_PRICING_DATE" \
+  --output "$OPTIMIZATION_RUN_DIR"
+```
+
+명령이 중단돼도 같은 폴더에 이어 쓰거나 지우고 다시 시작하지 않는다. 그 폴더를 `partial`
+상태의 근거로 보존하고 다시 실행할 때 새 `RUN_ID`를 사용한다.
+
+다음 명령으로 결과를 읽는다.
+
+```bash
+uv run --locked python scripts/inspect_week_04_prompt_results.py \
+  --optimization-dir "$OPTIMIZATION_RUN_DIR"
+```
+
+`optimization/`에는 `calls.jsonl`, `candidate-prompt.md`, `validation.jsonl`,
+`selected-prompt.md`, `summary.json`이 있어야 한다. `summary.json`에서
+`run_mode=full_evaluation`, `observed_status=complete`, 18/6/6 분할, 실제 모델, 오류,
+`candidate_changed`, `selected`, `selection_reason`을 확인한다.
+
+### 7-3. 개인 이미지 5건 실행과 평가
+
+지시문 최적화가 끝나면 같은 터미널에서 아래 명령을 실행한다. `--variants-dir`는 5절에서
+본인이 직접 보고 판정한 이미지 폴더를 지정한다.
+
+```bash
+uv run --locked python scripts/run_image_robustness.py \
+  --live \
+  --prompt "$OPTIMIZATION_RUN_DIR/selected-prompt.md" \
+  --variants-dir "$VARIANTS_DIR" \
+  --max-requests 5 \
+  --max-input-tokens 100000 \
+  --max-output-tokens 2500 \
+  --max-cost-usd 0.01 \
+  --max-wall-seconds 900 \
+  --catalog-verified-on "$NIM_CATALOG_DATE" \
+  --pricing-verified-on "$NIM_PRICING_DATE" \
+  --output "$ROBUSTNESS_RUN_DIR"
+
+uv run --locked python scripts/evaluate_image_robustness.py \
+  --variants "$VARIANTS_DIR/variants.jsonl" \
+  --reviews "$VARIANTS_DIR/variant-review.csv" \
+  --case "$VARIANTS_DIR/case.json" \
+  --responses "$ROBUSTNESS_RUN_DIR/responses.jsonl" \
+  --output "$ROBUSTNESS_RUN_DIR/evaluation.json"
+```
+
+`robustness/`에는 `calls.jsonl`, `responses.jsonl`, `summary.json`, `evaluation.json`,
+`evaluation-manifest.json`이 있어야 한다. `summary.json`에서 `observed_status=complete`,
+`record_count=5`, `target_count=5`, 실제 모델과 오류를 확인한다. 개인 이미지·검토표의 SHA-256이
+응답 실행 기록과 다르면 평가 명령이 멈춘다.
+
+두 `summary.json`에서 다음 세 계보 항목도 비교한다. 하나라도 다르면 서로 다른 코드·지시문·입력을
+섞은 것이므로 `complete`가 아니다.
+
+- `optimization/summary.json`과 `robustness/summary.json`의 `git_sha`
+- 지시문 최적화의 `selected_prompt_sha256`와 이미지 실행의 `prompt_sha256`
+- 두 파일의 `artifact_sha256.week-03-cases.jsonl`
+
+### 7-4. 개인 실행 상태 기록
+
+| 상태 | 기록 기준 | 다음 행동 |
+| --- | --- | --- |
+| `complete` | 두 `summary.json`이 모두 `observed_status=complete`이고 위 결과 파일이 모두 있으며 세 계보가 일치함 | 품질 `pass / fail / inconclusive`와 선택 이유를 따로 해석 |
+| `partial` | 실제 호출을 시작했지만 두 실행 중 하나가 끝나지 않았거나 결과 파일이 빠졌거나 세 계보 항목이 일치하지 않음 | 기존 폴더를 보존하고 새 폴더에서 다시 실행 |
+| `not_run` | 승인·key·quota 문제로 실제 호출을 시작하지 않음 | 사유와 승인받은 재실행 날짜 기록 |
+
+`complete`는 필요한 호출이 끝나고 결과 파일이 모두 생긴 상태다. 품질 통과 여부는 별도로 판단한다.
+튜터 저장 결과를 분석했더라도 개인 실행 상태를 `complete`로 바꾸지 않는다.
+
+기존 `local-data/learning-progress.md`의 Week 4에 아래 항목이 없으면 추가해 본인 결과를 적는다.
+
+```text
+개인 전체 실행 폴더:
+지시문 최적화 상태(complete / partial / not_run):
+이미지 5건 상태(complete / partial / not_run):
+개인 전체 상태(complete / partial / not_run):
+계보 3개 확인(일치 / 불일치):
+중단 사유와 재실행 폴더·날짜:
+```
+
+## 8. 제출
+
+다음 네 경로를 보존한다.
 
 1. `local-data/week-04-students/minsu/variants/variant-review.csv`: 직접 판정한 네 행
 2. `reports/week-04/students/minsu/evaluation.json`: 튜터 저장 응답을 현재 채점기로 계산한 결과
 3. `local-data/learning-progress.md`: 데이터 분할, 선택 이유와 주장할 수 없는 범위
+4. `reports/week-04/student-full/minsu-<실행 시각>/`: 개인 전체 실행의 원응답·요약·평가
 
-위 두 경로의 `minsu`는 본인 별칭이다.
+위 경로의 `minsu`는 본인 별칭이다.
 
 학습 기록에는 다음 문장을 본인의 결과에 맞게 완성한다.
 
@@ -585,3 +733,6 @@ API key, `.env`, OpenCQA 원본과 튜터가 저장한 실제 실행 폴더는 �
   수 없는 경우(`inconclusive`)를 구분했다.
 - 수업 중 개발 사례 2건은 지시문 생성 과정만 확인하고 후보 선택에 쓰지 않았다.
 - 최종 지시문과 품질 판단은 개발 18건·검증 6건 전체 저장 기록으로 확인했다.
+- 수업 후 개인 전체 실행 폴더와 `complete / partial / not_run` 상태를 학습 진행표에 기록했다.
+- `complete`라면 지시문 최적화와 이미지 5건 각각의 `summary.json`이
+  `observed_status=complete`이고 필요한 결과 파일이 모두 있으며 세 계보 항목이 일치한다.

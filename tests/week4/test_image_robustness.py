@@ -446,7 +446,18 @@ def test_evaluation_manifest_binds_inputs_and_scores(monkeypatch, tmp_path) -> N
     schema.parent.mkdir(parents=True)
     schema.write_text("# schema\n", encoding="utf-8")
     (tmp_path / "summary.json").write_text(
-        json.dumps({"git_sha": "a" * 40}), encoding="utf-8"
+        json.dumps(
+            {
+                "git_sha": "a" * 40,
+                "artifact_sha256": {
+                    "responses.jsonl": hashlib.sha256(responses.read_bytes()).hexdigest(),
+                    "case.json": hashlib.sha256(case.read_bytes()).hexdigest(),
+                    "variants.jsonl": hashlib.sha256(variants.read_bytes()).hexdigest(),
+                    "variant-review.csv": hashlib.sha256(reviews.read_bytes()).hexdigest(),
+                },
+            }
+        ),
+        encoding="utf-8",
     )
     output = tmp_path / "evaluation.json"
     monkeypatch.setattr(evaluate_image_robustness, "PROJECT_ROOT", tmp_path)
@@ -478,6 +489,10 @@ def test_evaluation_manifest_binds_inputs_and_scores(monkeypatch, tmp_path) -> N
     assert manifest["scorer_sha256"] == hashlib.sha256(scorer.read_bytes()).hexdigest()
     assert manifest["metric_sha256"] == hashlib.sha256(metric.read_bytes()).hexdigest()
     assert manifest["schema_sha256"] == hashlib.sha256(schema.read_bytes()).hexdigest()
+
+    reviews.write_text("changed\n", encoding="utf-8")
+    with pytest.raises(SystemExit, match="SHA-256"):
+        evaluate_image_robustness.main()
 
 
 def test_invalid_structured_response_is_a_failed_variant(tmp_path: Path) -> None:
@@ -614,11 +629,33 @@ def test_robustness_runner_rejects_larger_than_approved_caps(
         run_image_robustness.main()
 
 
-def test_robustness_runner_keeps_partial_evidence_on_provider_error(
+@pytest.mark.parametrize(
+    (
+        "failure_on",
+        "change_input",
+        "expected_status",
+        "expected_quality",
+        "expected_count",
+        "expected_return",
+    ),
+    [
+        (2, False, "partial", "inconclusive", 1, 2),
+        (1, False, "not_run", "inconclusive", 0, 2),
+        (None, True, "partial", "inconclusive", 5, 2),
+        (None, False, "complete", "fail", 5, 0),
+    ],
+)
+def test_robustness_runner_records_completion_state_and_input_hashes(
     monkeypatch,
     tmp_path: Path,
+    failure_on: int | None,
+    change_input: bool,
+    expected_status: str,
+    expected_quality: str,
+    expected_count: int,
+    expected_return: int,
 ) -> None:
-    variant_root = tmp_path / "local-data/opencqa/week-04-variants"
+    variant_root = tmp_path / "local-data/week-04-students/minsu/variants"
     variant_root.mkdir(parents=True)
     prompt = tmp_path / "prompts/week-04-baseline.md"
     prompt.parent.mkdir()
@@ -644,7 +681,8 @@ def test_robustness_runner_keeps_partial_evidence_on_provider_error(
         "".join(item.model_dump_json() + "\n" for item in artifacts),
         encoding="utf-8",
     )
-    _write_reviews(variant_root / "variant-review.csv", artifacts)
+    reviews = _write_reviews(variant_root / "variant-review.csv", artifacts)
+    reviews_hash = hashlib.sha256(reviews.read_bytes()).hexdigest()
     original_hash = hashlib.sha256(original.read_bytes()).hexdigest()
     (variant_root / "case.json").write_text(
         json.dumps(
@@ -679,7 +717,9 @@ def test_robustness_runner_keeps_partial_evidence_on_provider_error(
         def generate(self, *args, **kwargs):
             del args, kwargs
             self.calls += 1
-            if self.calls == 2:
+            if change_input and self.calls == 1:
+                reviews.write_text("changed\n", encoding="utf-8")
+            if self.calls == failure_on:
                 self.last_call = {
                     "provider_status": "provider_error",
                     "error_type": "APIConnectionError",
@@ -700,7 +740,6 @@ def test_robustness_runner_keeps_partial_evidence_on_provider_error(
         output_cost_per_token_usd=0.0,
     )
     monkeypatch.setattr(run_image_robustness, "PROJECT_ROOT", tmp_path)
-    monkeypatch.setattr(run_image_robustness, "VARIANT_ROOT", variant_root)
     monkeypatch.setattr(run_image_robustness, "_git_sha", lambda: "a" * 40)
     monkeypatch.setattr(run_image_robustness, "_require_current_pair", lambda case: None)
     monkeypatch.setattr(run_image_robustness, "load_project_env", lambda *args: None)
@@ -735,26 +774,35 @@ def test_robustness_runner_keeps_partial_evidence_on_provider_error(
             date.today().isoformat(),
             "--pricing-verified-on",
             date.today().isoformat(),
+            "--variants-dir",
+            str(variant_root),
             "--output",
             str(output),
         ],
     )
 
-    assert run_image_robustness.main() == 2
+    assert run_image_robustness.main() == expected_return
     summary = json.loads((output / "summary.json").read_text(encoding="utf-8"))
-    assert summary["status"] == "inconclusive"
-    assert summary["observed_status"] == "partial"
-    assert summary["record_count"] == 1
-    assert summary["invalid_output_count"] == 1
+    assert summary["status"] == expected_quality
+    assert summary["observed_status"] == expected_status
+    assert summary["record_count"] == expected_count
+    assert summary["invalid_output_count"] == expected_count
+    assert summary["input_changed_during_run"] is change_input
     assert summary["pricing_verified_on"] == date.today().isoformat()
     assert summary["schema_sha256"]
     assert summary["artifact_sha256"]["calls.jsonl"]
-    assert summary["artifact_sha256"]["responses.jsonl"]
-    response = json.loads((output / "responses.jsonl").read_text(encoding="utf-8"))
-    assert response["output"] is None
-    assert response["raw_output"] == "not-json"
+    assert bool(summary["artifact_sha256"]["responses.jsonl"]) is bool(expected_count)
+    assert summary["artifact_sha256"]["variants.jsonl"] == hashlib.sha256(
+        (variant_root / "variants.jsonl").read_bytes()
+    ).hexdigest()
+    assert summary["artifact_sha256"]["variant-review.csv"] == reviews_hash
+    if expected_count == 1:
+        response = json.loads((output / "responses.jsonl").read_text(encoding="utf-8"))
+        assert response["output"] is None
+        assert response["raw_output"] == "not-json"
     calls = [json.loads(line) for line in (output / "calls.jsonl").read_text().splitlines()]
-    assert calls[-1]["error_type"] == "APIConnectionError"
+    if failure_on is not None:
+        assert calls[-1]["error_type"] == "APIConnectionError"
 
 
 def test_original_compares_reference_numbers() -> None:

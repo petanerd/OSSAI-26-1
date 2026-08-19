@@ -13,7 +13,8 @@
 - Week 4: Prompt 최적화를 배운다. NIM Gemma가 개발 문제에 답하면 Gemini가 낮은 점수의
   원인을 읽고 지시문을 고쳐 쓴다. 검증 문제 6개에서 처음·새 지시문을 비교한 뒤 이미지
   변형을 평가한다. 수업 중에는 개발 사례 2건의 생성 과정을 실제로 먼저 보여 주고, 그다음
-  수업 전에 저장한 전체 결과를 열어 지시문 선택과 품질을 판단한다.
+  수업 전에 저장한 전체 결과를 열어 지시문 선택과 품질을 판단한다. 수업 후에는 각 학습자가
+  개인 폴더에서 전체 최적화와 이미지 5건을 실행한다.
 - Week 5 이후: 도구 호출과 CI를 같은 작업 흐름에 추가한다.
 
 처음 실습한다면 [Week 1 실습](docs/week-01-lab.md),
@@ -54,7 +55,7 @@ Week 1–2는 전체 평균을 보기 전에 대표 사례 한 건을 다음 순
 | Week 1 | 이미지 입력, 구조화 출력, 고정 규칙 채점기(deterministic scorer) | 질문·답·근거 페이지를 검사하는 첫 작업 흐름 |
 | Week 2 | 동일 release baseline과 자기 prompt 40건, 저장된 두 API 예시 비교 | 개인 원본·요약·baseline 비교, 경로 묶음·오류 구분 |
 | Week 3 | NIM Gemma 기준·개선 실제 답과 Gemini Judge 30쌍 | 사람 사전 label, Judge trial 결과 60행의 위치·반복 충돌과 사용 한계 |
-| Week 4 | 이미지 변형과 지시문 최적화 | 원본·변형 입력의 품질 및 안전 비교 |
+| Week 4 | 이미지 변형과 지시문 최적화 | 개인 전체 최적화·이미지 5건 실행의 원응답, 지시문 선택과 안전 비교 |
 | Week 5 | 도구 호출 기록(trace)과 최종 상태 | 결과뿐 아니라 실행 과정까지 포함한 평가 |
 | Week 6 | PR·정기 평가·출시 판단 | 자동 검사 결과와 사람의 최종 결정 |
 
@@ -103,8 +104,9 @@ Week 2 개인 prompt는 `local-data/week-02-students/<alias>/prompt.md`에 두�
 저장한다. Week 3의 `human-label.yaml`·`interpretation.md`는
 `local-data/week-03-student-judges/<alias>/`에 둔다. 개인 후보 생성의 호출·결과·요약·두
 지시문 snapshot과 Gemini Judge 호출·결과·요약·비교는
-`reports/week-03/student-full/<alias-시각>/candidates/`와 `judge/`에 나눠 보존한다. 전체 실행
-명령은 아래 주차 실습서에만 둔다.
+`reports/week-03/student-full/<alias-시각>/candidates/`와 `judge/`에 나눠 보존한다. Week 4
+개인 전체 실행 결과는 `reports/week-04/student-full/<alias-시각>/optimization/`과 `robustness/`에
+나눠 보존한다. 전체 실행 명령은 아래 주차 실습서에만 둔다.
 
 모델에는 PDF 문장을 보내지 않는다. PDF를 페이지 JPEG로 바꿔 VLM이 이미지에서 직접 읽도록
 한다. 전처리할 때는 원본·라벨 확인용 텍스트도 저장하지만, 모델 입력이나 채점에는 사용하지

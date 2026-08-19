@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import hashlib
 import json
 from collections import Counter
 from pathlib import Path
@@ -17,6 +18,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 def _read_jsonl(path: Path) -> list[dict]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _changed_lines(before: str, after: str) -> list[str]:
@@ -86,9 +91,19 @@ def inspect(project_root: Path, optimization_dir: Path | None = None) -> str:
     }
     missing = [name for name, path in paths.items() if not path.is_file()]
     if missing:
-        raise SystemExit("읽을 수 없는 수업 자료: " + ", ".join(missing))
+        raise SystemExit("읽을 수 없는 결과 파일: " + ", ".join(missing))
 
     summary = json.loads(paths["summary"].read_text(encoding="utf-8"))
+    stored_hashes = summary.get("artifact_sha256", {})
+    artifacts = {
+        "calls.jsonl": paths["calls"],
+        "validation.jsonl": paths["validation"],
+        "candidate-prompt.md": paths["candidate"],
+        "selected-prompt.md": paths["selected"],
+        "week-03-cases.jsonl": paths["cases"],
+    }
+    if any(stored_hashes.get(name) != _sha256(path) for name, path in artifacts.items()):
+        raise SystemExit("summary.json에 기록된 SHA-256이 현재 결과 파일의 SHA-256과 다릅니다")
     expected_prompt = (
         paths["baseline"] if summary.get("selected") == "baseline" else paths["candidate"]
     )
@@ -98,7 +113,17 @@ def inspect(project_root: Path, optimization_dir: Path | None = None) -> str:
         paths["baseline"].read_text(encoding="utf-8"),
         paths["candidate"].read_text(encoding="utf-8"),
     )
-    comparisons = _comparisons(_read_jsonl(paths["validation"]))
+    validation_rows = _read_jsonl(paths["validation"])
+    candidate_changed = bool(summary["candidate_changed"])
+    if candidate_changed:
+        comparisons = _comparisons(validation_rows)
+    else:
+        if any(row.get("prompt") != "baseline" for row in validation_rows):
+            raise ValueError("지시문이 같다면 검증 결과에는 처음 지시문 결과만 있어야 합니다")
+        comparisons = [
+            {"sample_id": str(row["sample_id"]), "baseline": row}
+            for row in validation_rows
+        ]
     cases = {case.sample_id: case for case in load_open_cqa_cases(paths["cases"])}
     roles = Counter(str(row.get("provider_role")) for row in _read_jsonl(paths["calls"]))
     reason = {
@@ -109,7 +134,7 @@ def inspect(project_root: Path, optimization_dir: Path | None = None) -> str:
 
     lines = [
         "[어느 저장 결과를 읽었나]",
-        f"- 수업 자료: {materials.label if optimization_dir is None else '튜터가 지정한 새 결과'}",
+        f"- 수업 자료: {materials.label if optimization_dir is None else '직접 지정한 결과'}",
         f"- 저장 위치: {result_dir.relative_to(project_root.resolve())}",
         f"- 저장 응답을 만든 코드 버전: {str(summary.get('git_sha', '알 수 없음'))[:7]}",
         "- 이 Git 번호는 결과의 출처 표시이며 수강생이 입력하거나 바꾸는 값이 아닙니다.",
@@ -138,19 +163,35 @@ def inspect(project_root: Path, optimization_dir: Path | None = None) -> str:
         "[검증 문제 6개]",
     ]
     for item in comparisons:
-        lines.append(
-            f"- {item['sample_id']}: {item['baseline']['score']:.4f} → "
-            f"{item['candidate']['score']:.4f} ({item['delta']:+.4f})"
-        )
+        if candidate_changed:
+            lines.append(
+                f"- {item['sample_id']}: {item['baseline']['score']:.4f} → "
+                f"{item['candidate']['score']:.4f} ({item['delta']:+.4f})"
+            )
+        else:
+            lines.append(
+                f"- {item['sample_id']}: 처음 지시문 {item['baseline']['score']:.4f} "
+                "(새 지시문은 실행하지 않음)"
+            )
     lines.extend(
         [
             "",
             "[최종 선택]",
             f"- 처음 지시문 평균: {summary['baseline_mean']:.4f}",
-            f"- 새 지시문 평균: {summary['candidate_mean']:.4f}",
+            (
+                f"- 새 지시문 평균: {summary['candidate_mean']:.4f}"
+                if summary["candidate_mean"] is not None
+                else "- 새 지시문 평균: 지시문이 같아 실행하지 않음"
+            ),
             f"- 결론: {reason}",
         ]
     )
+    if not candidate_changed:
+        lines.extend(
+            ["", "[대표 변화 사례 없음]", "지시문이 같아 새 답을 만들지 않았습니다."]
+        )
+        return "\n".join(lines)
+
     best, worst = _representatives(comparisons)
     for item, label in (
         (best, "점수가 가장 오른 사례"),
@@ -175,7 +216,7 @@ def main() -> int:
     parser.add_argument(
         "--optimization-dir",
         type=Path,
-        help="튜터가 방금 만든 결과를 점검할 때만 지정합니다",
+        help="직접 지정한 전체 실행 결과 폴더를 점검합니다",
     )
     args = parser.parse_args()
     print(inspect(PROJECT_ROOT, args.optimization_dir))
