@@ -22,6 +22,8 @@
 [Week 4 실습](docs/week-04-lab.md) 순서로 진행한다.
 낯선 용어나 도구는 [수업 도구·채점기·용어](docs/terms-tools-and-scoring.md)에서 확인한다.
 
+공개 저장소에서 API 없이 코드를 검사하려면 [GitHub Actions 안내](docs/github-actions.md)를 따른다.
+
 ## 수업에서 먼저 보는 한 사례
 
 Week 1–2는 전체 평균을 보기 전에 대표 사례 한 건을 다음 순서로 읽는다. Week 3는 Judge
