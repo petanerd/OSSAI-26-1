@@ -454,6 +454,21 @@ def test_optimizer_rejects_larger_than_approved_caps(monkeypatch, tmp_path) -> N
 def test_optimizer_failure_without_response_is_inconclusive(
     monkeypatch, tmp_path, attempt_count, expected_status, provider_error
 ) -> None:
+    original_root = optimize_open_cqa_prompt.PROJECT_ROOT
+    for relative in (
+        "configs/week-04.yaml",
+        "prompts/week-04-baseline.md",
+        "src/verifiable_ai_workflow/schemas/models.py",
+        "src/verifiable_ai_workflow/prompt_optimization.py",
+    ):
+        target = tmp_path / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((original_root / relative).read_bytes())
+    cases_path = tmp_path / "local-data/opencqa/week-03-cases.jsonl"
+    cases_path.parent.mkdir(parents=True)
+    cases_path.write_text("".join(case.model_dump_json() + "\n" for case in _cases()))
+    monkeypatch.setattr(optimize_open_cqa_prompt, "PROJECT_ROOT", tmp_path)
+
     class Provider:
         structured_output = "json_schema"
 

@@ -188,7 +188,7 @@ def prepare(
         progress = project_root / "local-data/learning-progress.md"
         if not progress.exists():
             shutil.copyfile(
-                project_root.parents[1] / "templates/learner-progress-template.md",
+                project_root / "docs/templates/week-04-progress-template.md",
                 progress,
             )
 

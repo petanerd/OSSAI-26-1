@@ -161,6 +161,7 @@ DEEPEVAL_TELEMETRY_OPT_OUT=YES
 - [Week 2 실습](docs/week-02-lab.md): 자기 prompt 40건과 동일 release baseline, 저장된 Gemma–Gemini 예시 비교
 - [Week 3 실습](docs/week-03-lab.md): 개인 Gemma 실제 답 60개, 사람 사전 label과 Gemini Judge 30쌍
 - [Week 4 실습](docs/week-04-lab.md): GEPA 지시문 최적화와 원본·변형 이미지 견고성 평가
+- [Week 4 기록 양식](docs/templates/week-04-progress-template.md): 준비 스크립트가 복사하는 저장소 내 기록지
 - [수업 도구·채점기·용어](docs/terms-tools-and-scoring.md): 라이브러리, 지표, 실행 용어의 뜻
 - [코드 구조](docs/architecture.md): 실행 파일과 내부 코드의 연결
 - [AIHub 데이터 준비](docs/aihub-data.md): 원본 위치와 전처리 결과
