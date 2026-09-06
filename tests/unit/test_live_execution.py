@@ -1,3 +1,5 @@
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -9,6 +11,25 @@ from verifiable_ai_workflow.live_execution import (
     LiveExecutionError,
     require_canonical_project_file,
 )
+
+
+def test_week5_imports_do_not_require_unix_file_lock() -> None:
+    subprocess.run(
+        [sys.executable, "-c", """
+import builtins
+original_import = builtins.__import__
+def without_fcntl(name, *args, **kwargs):
+    if name == "fcntl":
+        raise ModuleNotFoundError("Windows에는 fcntl이 없습니다")
+    return original_import(name, *args, **kwargs)
+builtins.__import__ = without_fcntl
+from scripts import run_agent_cases, run_agent_live
+assert run_agent_cases.PROJECT_ROOT == run_agent_live.PROJECT_ROOT
+"""],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
 
 
 def test_canonical_project_file_rejects_external_and_symlink_config(tmp_path: Path) -> None:

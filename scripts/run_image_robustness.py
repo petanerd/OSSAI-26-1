@@ -8,9 +8,10 @@ import base64
 import hashlib
 import json
 import subprocess
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 
+import yaml
 from deepeval.prompt import Prompt
 
 from verifiable_ai_workflow.config.secrets import load_project_env
@@ -93,6 +94,7 @@ def _require_current_pair(case: dict) -> None:
 def _artifact_sha256(output: Path, variants_dir: Path) -> dict[str, str | None]:
     paths = {
         "calls.jsonl": output / "calls.jsonl",
+        "response-receipts.jsonl": output / "response-receipts.jsonl",
         "responses.jsonl": output / "responses.jsonl",
         "week-03-cases.jsonl": CASES,
         "case.json": variants_dir / "case.json",
@@ -102,9 +104,33 @@ def _artifact_sha256(output: Path, variants_dir: Path) -> dict[str, str | None]:
     return {name: _sha256(path) if path.is_file() else None for name, path in paths.items()}
 
 
+def _require_weekly_case(case: dict, variants: list[VariantArtifact]) -> None:
+    selection = yaml.safe_load(
+        (PROJECT_ROOT / "data/opencqa/week-03-selection.yaml").read_text(encoding="utf-8")
+    )
+    expected_sample_id = selection["course_splits"]["development"][0]
+    if (
+        case["sample_id"] != expected_sample_id
+        or case["course_split"] != "development"
+        or case["source_split"] != selection["source_split"]
+        or case["source_revision"] != selection["revision"]
+        or case["source_license"] != selection["license"]
+    ):
+        raise SystemExit("Week 6 robustness case의 split·ID·source가 고정 선택과 다릅니다")
+    expected_variant_ids = [
+        item["variant_id"]
+        for item in yaml.safe_load(
+            (PROJECT_ROOT / "configs/week-04.yaml").read_text(encoding="utf-8")
+        )["robustness"]
+    ]
+    if [item.variant_id for item in variants] != expected_variant_ids:
+        raise SystemExit("Week 6 robustness variant ID가 고정 설정과 다릅니다")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--live", action="store_true")
+    parser.add_argument("--profile", choices=("weekly",))
     parser.add_argument("--prompt", type=Path, default=PROJECT_ROOT / "prompts/week-04-baseline.md")
     parser.add_argument("--max-requests", type=int, required=True)
     parser.add_argument("--max-input-tokens", type=int, required=True)
@@ -158,6 +184,8 @@ def main() -> int:
         raise SystemExit("이미지 견고성 실행에는 변형 4개가 필요합니다")
     if {item.sample_id for item in variants} != {case["sample_id"]}:
         raise SystemExit("case와 이미지 변형의 sample_id가 다릅니다")
+    if args.profile == "weekly":
+        _require_weekly_case(case, variants)
     original_image = PROJECT_ROOT / case["original_image"]
     if _sha256(original_image) != case["original_image_sha256"]:
         raise SystemExit("원본 이미지 bytes가 Week 4 case와 다릅니다")
@@ -177,6 +205,13 @@ def main() -> int:
     images = [("original", original_image, case["original_image_sha256"])] + [
         (item.variant_id, PROJECT_ROOT / item.image_path, item.image_sha256) for item in variants
     ]
+    started_at = datetime.now(UTC)
+    run_scope = "week06-weekly" if args.profile == "weekly" else "week04"
+    run_id = f"{run_scope}-{started_at:%Y%m%dT%H%M%SZ}-{git_sha[:8]}"
+    trial_ids = {
+        f"{case['sample_id']}:{variant_id}": f"{case['sample_id']}:{variant_id}-t01"
+        for variant_id, _, _ in images
+    }
     prompt_bytes = args.prompt.read_bytes()
     prompt_sha256 = hashlib.sha256(prompt_bytes).hexdigest()
     prompt = Prompt(text_template=prompt_bytes.decode("utf-8"))
@@ -184,31 +219,44 @@ def main() -> int:
     settings = load_settings(PROJECT_ROOT / "configs/nvidia-nim-gemma4.yaml")
     load_project_env(PROJECT_ROOT)
     calls_path = args.output / "calls.jsonl"
+    receipts_path = args.output / "response-receipts.jsonl"
     call_records: list[dict] = []
     last_journal_call: dict | None = None
+    active_trial_id: str | None = None
 
     def record_call(call: dict) -> None:
         nonlocal last_journal_call
+        raw_call = dict(call)
+        call = {**raw_call, "run_id": run_id, "trial_id": active_trial_id}
         call_records.append(call)
         with calls_path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(call, ensure_ascii=False) + "\n")
-        last_journal_call = call
+        last_journal_call = raw_call
+
+    def record_receipt(call: dict) -> None:
+        call = {**call, "run_id": run_id, "trial_id": active_trial_id}
+        with receipts_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(call, ensure_ascii=False) + "\n")
 
     provider = build_course_provider(
         settings,
         caps,
         structured_output="json_schema",
-        on_response=record_call,
+        on_response=record_receipt,
+        on_call_finished=record_call,
     )
     args.output.mkdir(parents=True, exist_ok=True)
+    receipts_path.touch()
     responses_path = args.output / "responses.jsonl"
     record_count = 0
     invalid_output_count = 0
     run_error: Exception | None = None
     try:
         for variant_id, image_path, image_sha256 in images:
+            sample_id = f"{case['sample_id']}:{variant_id}"
+            active_trial_id = trial_ids[sample_id]
             raw = provider.generate(
-                f"{case['sample_id']}:{variant_id}",
+                sample_id,
                 [
                     {"role": "system", "content": instruction},
                     _image_message(image_path, case["question"], image_sha256),
@@ -217,6 +265,9 @@ def main() -> int:
             try:
                 parsed = StructuredAnswer.model_validate_json(raw)
                 response_record = {
+                    "run_id": run_id,
+                    "trial_id": active_trial_id,
+                    "sample_id": sample_id,
                     "variant_id": variant_id,
                     "raw_output": raw,
                     "output": parsed.model_dump(mode="json"),
@@ -225,6 +276,9 @@ def main() -> int:
             except Exception as exc:
                 invalid_output_count += 1
                 response_record = {
+                    "run_id": run_id,
+                    "trial_id": active_trial_id,
+                    "sample_id": sample_id,
                     "variant_id": variant_id,
                     "raw_output": raw,
                     "output": None,
@@ -277,7 +331,12 @@ def main() -> int:
             if budget_summary.get("attempt_count", 0)
             else "not_run"
         ),
+        "profile": args.profile,
         "evidence_kind": "live_quality",
+        "run_id": run_id,
+        "trial_ids": trial_ids,
+        "started_at_utc": started_at.isoformat(),
+        "finished_at_utc": datetime.now(UTC).isoformat(),
         "git_sha": git_sha,
         "catalog_verified_on": args.catalog_verified_on.isoformat(),
         "billing_basis": settings.provider.billing_basis,
@@ -305,8 +364,16 @@ def main() -> int:
         "target_count": 5,
         "invalid_output_count": invalid_output_count,
         "target_variant_ids": [variant_id for variant_id, _, _ in images],
+        "target_sample_ids": list(trial_ids),
         "completed_variant_ids": [
             json.loads(line)["variant_id"]
+            for line in responses_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        if responses_path.is_file()
+        else [],
+        "completed_sample_ids": [
+            json.loads(line)["sample_id"]
             for line in responses_path.read_text(encoding="utf-8").splitlines()
             if line.strip()
         ]

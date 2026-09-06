@@ -345,6 +345,7 @@ def test_live_provider_redacts_key_if_provider_echoes_it(
         ),
     )
     journal: list[dict] = []
+    finished: list[dict] = []
     provider = LiteLLMProvider(
         model="test/model",
         expected_actual_model="test/model",
@@ -363,7 +364,10 @@ def test_live_provider_redacts_key_if_provider_echoes_it(
         request_output_token_ceiling=50,
         input_cost_per_token_usd=0.0,
         output_cost_per_token_usd=0.0,
-        on_response_received=journal.append,
+        on_response_received=lambda record: journal.append(
+            json.loads(json.dumps(record))
+        ),
+        on_call_finished=finished.append,
     )
 
     content = provider.generate("sample-1", [{"role": "user", "content": "질문"}])
@@ -372,6 +376,11 @@ def test_live_provider_redacts_key_if_provider_echoes_it(
     assert secret not in json.dumps(journal)
     assert secret not in json.dumps(provider.last_call)
     assert "[REDACTED]" in content
+    assert journal[0]["provider_status"] == "provider_response_received"
+    assert journal[0]["attempt_trace"] == []
+    assert finished[0]["provider_status"] == "success"
+    assert len(finished[0]["attempt_trace"]) == 1
+    assert finished[0]["budget"]["actual_input_tokens"] == 10
 
 
 @pytest.mark.parametrize("status_code", [429, 500])
@@ -485,6 +494,62 @@ def test_cumulative_cost_blocks_second_call_before_network(
     assert provider.last_call["sample_id"] == "sample-2"
     assert provider.last_call["provider_status"] == "blocked"
     assert "test-key" not in json.dumps(provider.last_call)
+
+
+def test_budget_exceeded_after_response_keeps_actual_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TEST_TASK_KEY", "test-key")
+    calls = 0
+    receipts: list[dict] = []
+
+    def fake_completion(**kwargs):
+        nonlocal calls
+        del kwargs
+        calls += 1
+        return SimpleNamespace(
+            id="response-over-budget",
+            model="nvidia_nim/test/model",
+            usage=SimpleNamespace(prompt_tokens=101, completion_tokens=5),
+            choices=[SimpleNamespace(message=SimpleNamespace(content="{}"))],
+        )
+
+    monkeypatch.setattr(litellm, "completion", fake_completion)
+    provider = LiteLLMProvider(
+        model="nvidia_nim/test/model",
+        expected_actual_model="test/model",
+        api_key_env="TEST_TASK_KEY",
+        api_base=None,
+        structured_output="prompt_only",
+        max_requests=2,
+        max_attempts=2,
+        requests_per_minute=1200,
+        max_retries=0,
+        retry_initial_seconds=1,
+        max_cost_usd=0.1,
+        max_input_tokens=100,
+        max_output_tokens=50,
+        max_wall_seconds=45,
+        request_input_token_ceiling=100,
+        request_output_token_ceiling=50,
+        input_cost_per_token_usd=0.0,
+        output_cost_per_token_usd=0.0,
+        on_response_received=receipts.append,
+    )
+
+    with pytest.raises(LiveBudgetExceeded):
+        provider.generate("sample-1", [])
+
+    assert provider.last_call["provider_status"] == "provider_error"
+    assert provider.last_call["error_type"] == "LiveBudgetExceeded"
+    assert provider.last_call["reported_actual_model"] == "nvidia_nim/test/model"
+    assert provider.last_call["actual_model"] == receipts[0]["actual_model"] == "test/model"
+    assert provider.last_call["actual_model_matches_expected"] is True
+    assert provider.last_call["input_tokens"] == 101
+    assert provider.last_call["raw_response"]["id"] == "response-over-budget"
+    with pytest.raises(RuntimeError, match="이전 응답 검증 실패"):
+        provider.generate("sample-2", [])
+    assert calls == 1
 
 
 @pytest.mark.parametrize(
@@ -673,5 +738,7 @@ def test_failed_call_keeps_current_metadata_and_redacts_secret(
     assert provider.last_call["sample_id"] == "sample-2"
     assert provider.last_call["provider_status"] == "provider_error"
     assert provider.last_call["actual_model"] is None
+    assert provider.last_call["actual_model_matches_expected"] is False
+    assert provider.last_call["raw_response"] is None
     assert provider.last_call["attempt_trace"][-1]["status"] == "error"
     assert "test-key" not in json.dumps(provider.last_call)

@@ -115,6 +115,7 @@ class LiteLLMProvider:
         budget: LiveBudget | None = None,
         resume_last_attempt_started_at: datetime | None = None,
         on_response_received: Callable[[dict[str, Any]], None] | None = None,
+        on_call_finished: Callable[[dict[str, Any]], None] | None = None,
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.monotonic,
         utc_now: Callable[[], datetime] = lambda: datetime.now(UTC),
@@ -202,6 +203,7 @@ class LiteLLMProvider:
         self.max_images_per_prompt = max_images_per_prompt
         self.budget = budget or LiveBudget(caps)
         self._on_response_received = on_response_received
+        self._on_call_finished = on_call_finished
         self._minimum_interval = 60 / requests_per_minute
         self._last_attempt_started: float | None = None
         self._resume_last_attempt_started_at = resume_last_attempt_started_at
@@ -511,6 +513,23 @@ class LiteLLMProvider:
                 "rate_limit_headers": rate_limit_headers,
             }
         )
+        if self._on_call_finished is not None:
+            try:
+                self._on_call_finished(dict(self.last_call))
+            except Exception as exc:
+                self._halted_reason = "call_evidence_persistence_failed"
+                message = self._safe_error_message(exc)
+                self.last_call.update(
+                    {
+                        "provider_status": "provider_error",
+                        "error_type": "CallEvidencePersistenceError",
+                        "error_message": message,
+                        "budget_violations": ["call_evidence_persistence_failed"],
+                    }
+                )
+                raise RuntimeError(
+                    "정산된 provider 호출 기록을 영속 저장하지 못해 실행을 중단했습니다"
+                ) from exc
         return self._redact_secret_value(response.choices[0].message.content)
 
     def _new_call_record(
@@ -611,8 +630,6 @@ class LiteLLMProvider:
         self.last_call.update(
             {
                 "provider_status": "provider_error",
-                "actual_model": None,
-                "actual_model_matches_expected": False,
                 "retry_count": retry_count,
                 "request_number": latest.request_number if latest else None,
                 "attempt_number": latest.attempt_number if latest else None,

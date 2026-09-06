@@ -1,0 +1,152 @@
+name: Nightly Week 5 agent trace
+
+on:
+  schedule:
+    - cron: "0 18 * * *" # 매일 03:00 KST
+  workflow_dispatch:
+    inputs:
+      confirm_live_evaluation:
+        description: "NVIDIA 전송 범위와 실행 상한을 확인했습니다"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-live
+  cancel-in-progress: false
+
+jobs:
+  agent-trace:
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      vars.ENABLE_LIVE_EVALUATION == 'true' &&
+      vars.WEEK6_DATA_STORAGE_APPROVED == 'true' &&
+      ((github.event_name == 'schedule' && vars.ENABLE_SCHEDULED_EVALUATION == 'true') ||
+       (github.event_name == 'workflow_dispatch' && inputs.confirm_live_evaluation == true))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      INPUT_RELEASE_TAG: ${{ vars.WEEK6_INPUT_RELEASE_TAG }}
+      INPUT_SHA256: ${{ vars.WEEK6_INPUT_SHA256 }}
+      EVALUATION_PROFILE: nightly
+      PHOENIX_HOST: "127.0.0.1"
+      PHOENIX_PORT: "6006"
+      PHOENIX_TELEMETRY_ENABLED: "false"
+      PHOENIX_ALLOW_EXTERNAL_RESOURCES: "false"
+      REPORT_ROOT: reports/week-06-nightly-${{ github.run_id }}-${{ github.run_attempt }}
+      DEEPEVAL_DISABLE_DOTENV: "1"
+      DEEPEVAL_TELEMETRY_OPT_OUT: "YES"
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --disable-pip-version-check --no-deps "uv==0.11.28"
+      - run: uv sync --locked --dev --group phoenix --group phoenix-server
+      - name: Download and verify approved Release inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test -n "$INPUT_RELEASE_TAG"
+          [[ "$INPUT_RELEASE_TAG" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]]
+          mkdir -p "$RUNNER_TEMP/week6-inputs" "$REPORT_ROOT"
+          gh release download "$INPUT_RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern 'week56-inputs-a5eec33.tar.gz' --dir "$RUNNER_TEMP/week6-inputs"
+          uv run --no-sync python scripts/prepare_week6_inputs.py --archive "$RUNNER_TEMP/week6-inputs/week56-inputs-a5eec33.tar.gz" --sha256 "$INPUT_SHA256"
+      - name: Record execution identity
+        run: |
+          uv run --no-sync python - <<'PY'
+          import json
+          import os
+          from importlib.metadata import version
+          from pathlib import Path
+          metadata = {
+              "github_repository": os.environ["GITHUB_REPOSITORY"],
+              "github_run_id": os.environ["GITHUB_RUN_ID"],
+              "github_run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "git_sha": os.environ["GITHUB_SHA"],
+              "profile": os.environ["EVALUATION_PROFILE"],
+              "input_release_tag": os.environ["INPUT_RELEASE_TAG"],
+              "input_sha256": os.environ["INPUT_SHA256"],
+              "phoenix_version": version("arize-phoenix"),
+              "execution_environment": "github-hosted",
+          }
+          (Path(os.environ["REPORT_ROOT"]) / "run-metadata.json").write_text(
+              json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+          )
+          PY
+      - name: Start temporary Phoenix
+        run: |
+          export PHOENIX_WORKING_DIR="$RUNNER_TEMP/week6-phoenix"
+          echo "PHOENIX_WORKING_DIR=$PHOENIX_WORKING_DIR" >> "$GITHUB_ENV"
+          mkdir -p "$PHOENIX_WORKING_DIR"
+          uv run --no-sync phoenix serve > "$REPORT_ROOT/phoenix-server.log" 2>&1 &
+          echo "$!" > "$RUNNER_TEMP/week6-phoenix.pid"
+          uv run --no-sync python - <<'PY'
+          import time
+          from urllib.error import URLError
+          from urllib.request import urlopen
+          for attempt in range(60):
+              try:
+                  with urlopen("http://127.0.0.1:6006", timeout=1) as response:
+                      if response.status == 200:
+                          break
+              except (URLError, TimeoutError):
+                  pass
+              time.sleep(1)
+          else:
+              raise SystemExit("Phoenix가 준비되지 않아 모델 API를 호출하지 않습니다")
+          PY
+      - name: Prepare Week 4 answers for nightly
+        run: |
+          mkdir -p "$REPORT_ROOT/prompt-selection" "$REPORT_ROOT/robustness"
+          cp local-data/week-04-full-runs/optimization-4b53815/{summary.json,selected-prompt.md} "$REPORT_ROOT/prompt-selection/"
+          cp local-data/week-04-full-runs/robustness-4b53815/{summary.json,responses.jsonl} "$REPORT_ROOT/robustness/"
+      - name: Check local Phoenix and NVIDIA before the first API call
+        env:
+          NVIDIA_NIM_API_KEY: ${{ secrets.NVIDIA_NIM_API_KEY }}
+          CATALOG_VERIFIED_ON: ${{ vars.NVIDIA_CATALOG_VERIFIED_ON }}
+          PRICING_VERIFIED_ON: ${{ vars.NVIDIA_PRICING_VERIFIED_ON }}
+        run: |
+          test -n "$CATALOG_VERIFIED_ON"
+          test -n "$PRICING_VERIFIED_ON"
+          uv run --no-sync python -c "from urllib.request import urlopen; assert urlopen('http://127.0.0.1:6006', timeout=2).status == 200"
+          uv run --no-sync python scripts/preflight_nvidia.py --config configs/nvidia-nim-gemma4.yaml
+      - name: Run and record W5-06
+        env:
+          NVIDIA_NIM_API_KEY: ${{ secrets.NVIDIA_NIM_API_KEY }}
+          CATALOG_VERIFIED_ON: ${{ vars.NVIDIA_CATALOG_VERIFIED_ON }}
+          PRICING_VERIFIED_ON: ${{ vars.NVIDIA_PRICING_VERIFIED_ON }}
+        run: |
+          run_status=0
+          uv run --no-sync python scripts/run_agent_live.py --live --phoenix --profile nightly --sample-id W5-06-idempotent-retry --max-requests 3 --max-input-tokens 60000 --max-output-tokens 1500 --max-cost-usd 0.01 --max-wall-seconds 360 --catalog-verified-on "$CATALOG_VERIFIED_ON" --pricing-verified-on "$PRICING_VERIFIED_ON" --upstream-summary "$REPORT_ROOT/robustness/summary.json" --upstream-responses "$REPORT_ROOT/robustness/responses.jsonl" --prompt-selection-summary "$REPORT_ROOT/prompt-selection/summary.json" --selected-prompt "$REPORT_ROOT/prompt-selection/selected-prompt.md" --output "$REPORT_ROOT/agent" || run_status=$?
+
+          history_status=0
+          uv run --no-sync python scripts/append_evaluation_history.py --profile nightly --summary "$REPORT_ROOT/agent/summary.json" --calls "$REPORT_ROOT/agent/calls.jsonl" --history "$REPORT_ROOT/history.jsonl" || history_status=$?
+
+          if test "$run_status" -ne 0; then
+            exit "$run_status"
+          fi
+          exit "$history_status"
+      - name: Save Phoenix database and stop this job's server
+        if: ${{ always() }}
+        run: |
+          backup_status=0
+          if test -f "$RUNNER_TEMP/week6-phoenix/phoenix.db"; then
+            uv run --no-sync python scripts/export_phoenix_db.py --source "$RUNNER_TEMP/week6-phoenix/phoenix.db" --output "$REPORT_ROOT/phoenix/phoenix.db" --runs "$REPORT_ROOT/agent/runs.jsonl" || backup_status=$?
+          fi
+          if test -f "$RUNNER_TEMP/week6-phoenix.pid"; then
+            kill "$(cat "$RUNNER_TEMP/week6-phoenix.pid")" 2>/dev/null || true
+          fi
+          exit "$backup_status"
+      - if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nightly-live-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.REPORT_ROOT }}
+          if-no-files-found: warn
+          retention-days: 7

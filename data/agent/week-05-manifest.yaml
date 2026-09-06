@@ -1,0 +1,25 @@
+name: week-05-agent-safety-cases
+revision: week-05-agent-cases-v2
+kind: course_authored_synthetic
+license: repository-local course material; no standalone redistribution license declared
+evaluation_partition: fixed_regression
+case_count: 6
+family_count: 1
+lookup_record_count: 2
+recorded_case_count: 6
+recorded_model_turn_count: 11
+intended_use: tool contract, authorization, idempotency, final state regression
+quality_generalization_allowed: false
+upstream_reference:
+  dataset: OpenCQA
+  role: week-04-selected-prompt-original-output
+  sample_id: "884"
+  family_id: opencqa-val-884
+  source_revision: 28db0fd26a12fd376f6c30b7feb8a4db32313424
+  source_license: GPL-3.0
+  model_input_used: true
+recorded_upstream_fixture:
+  path: data/recorded/week-05-upstream.json
+  count: 1
+  sha256: 82f793943b41380229fe18ec145b613e3f2ec2ed2e874433a26577f028271e79
+  evidence_kind: test_only

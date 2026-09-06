@@ -410,6 +410,26 @@ def test_robustness_case_must_match_current_pair(monkeypatch, tmp_path) -> None:
             run_image_robustness._require_current_pair({**case, field: "changed"})
 
 
+def test_weekly_profile_fixes_robustness_split_and_ids(project_root: Path) -> None:
+    case = {
+        "sample_id": "884",
+        "course_split": "development",
+        "source_split": "val",
+        "source_revision": "28db0fd26a12fd376f6c30b7feb8a4db32313424",
+        "source_license": "GPL-3.0",
+    }
+    variants = [
+        SimpleNamespace(variant_id=variant_id)
+        for variant_id in ("rotate-2", "jpeg-60", "crop-left", "occlude-answer")
+    ]
+
+    run_image_robustness._require_weekly_case(case, variants)
+    with pytest.raises(SystemExit, match="split·ID"):
+        run_image_robustness._require_weekly_case(
+            {**case, "course_split": "validation"}, variants
+        )
+
+
 def test_evaluation_manifest_binds_inputs_and_scores(monkeypatch, tmp_path) -> None:
     source = _image(tmp_path / "source.png")
     artifacts = generate_variants(
@@ -802,8 +822,9 @@ def test_robustness_runner_records_completion_state_and_input_hashes(
         structured_output = "json_schema"
         last_call = None
 
-        def __init__(self, on_response) -> None:
+        def __init__(self, on_response, on_call_finished) -> None:
             self.on_response = on_response
+            self.on_call_finished = on_call_finished
             self.calls = 0
             self.budget = SimpleNamespace(
                 summary=lambda: {
@@ -836,7 +857,13 @@ def test_robustness_runner_records_completion_state_and_input_hashes(
                 "actual_model": self.expected_actual_model,
                 "error_type": None,
             }
-            self.on_response(dict(self.last_call))
+            self.on_response(
+                {
+                    **self.last_call,
+                    "provider_status": "provider_response_received",
+                }
+            )
+            self.on_call_finished(dict(self.last_call))
             return "not-json"
 
     provider_settings = SimpleNamespace(
@@ -848,6 +875,7 @@ def test_robustness_runner_records_completion_state_and_input_hashes(
     monkeypatch.setattr(run_image_robustness, "PROJECT_ROOT", tmp_path)
     monkeypatch.setattr(run_image_robustness, "_git_sha", lambda: "a" * 40)
     monkeypatch.setattr(run_image_robustness, "_require_current_pair", lambda case: None)
+    monkeypatch.setattr(run_image_robustness, "_require_weekly_case", lambda *args: None)
     monkeypatch.setattr(run_image_robustness, "load_project_env", lambda *args: None)
     monkeypatch.setattr(
         run_image_robustness,
@@ -857,7 +885,9 @@ def test_robustness_runner_records_completion_state_and_input_hashes(
     monkeypatch.setattr(
         run_image_robustness,
         "build_course_provider",
-        lambda *args, **kwargs: FailingProvider(kwargs["on_response"]),
+        lambda *args, **kwargs: FailingProvider(
+            kwargs["on_response"], kwargs["on_call_finished"]
+        ),
     )
     output = tmp_path / "reports/robustness"
     monkeypatch.setattr(
@@ -866,6 +896,8 @@ def test_robustness_runner_records_completion_state_and_input_hashes(
         [
             "run_image_robustness.py",
             "--live",
+            "--profile",
+            "weekly",
             "--max-requests",
             "5",
             "--max-input-tokens",
@@ -890,6 +922,8 @@ def test_robustness_runner_records_completion_state_and_input_hashes(
     assert run_image_robustness.main() == expected_return
     summary = json.loads((output / "summary.json").read_text(encoding="utf-8"))
     assert summary["status"] == expected_quality
+    assert summary["run_id"].startswith("week06-weekly-")
+    assert len(summary["trial_ids"]) == 5
     assert summary["observed_status"] == expected_status
     assert summary["record_count"] == expected_count
     assert summary["invalid_output_count"] == expected_count
@@ -908,6 +942,8 @@ def test_robustness_runner_records_completion_state_and_input_hashes(
         assert response["output"] is None
         assert response["raw_output"] == "not-json"
     calls = [json.loads(line) for line in (output / "calls.jsonl").read_text().splitlines()]
+    assert all(call["run_id"] == summary["run_id"] for call in calls)
+    assert all(call["trial_id"] in summary["trial_ids"].values() for call in calls)
     if failure_on is not None:
         assert calls[-1]["error_type"] == (
             "LiveBudgetExceeded" if failure_on == 0 else "APIConnectionError"

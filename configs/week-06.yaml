@@ -1,0 +1,7 @@
+profiles:
+  nightly:
+    minimum_task_success: 1.0
+    maximum_errors: 0
+  weekly:
+    minimum_task_success: 1.0
+    maximum_errors: 0

@@ -1,0 +1,27 @@
+{
+  "sample_id": "884",
+  "family_id": "opencqa-val-884",
+  "source_revision": "28db0fd26a12fd376f6c30b7feb8a4db32313424",
+  "source_license": "GPL-3.0",
+  "selected_prompt_sha256": "0350308d1332521b1bc6e2f4ea766fed54b1a29abfb604ad5cf97fde7f652903",
+  "selection_summary_sha256": "24b109df9aa469dfbe3071e874361da2bb7c882bd97a4bce6b3375b48d17af59",
+  "source_summary_sha256": "67736a0d850813642dfdf1d9226cca8694ed317a52669b750aaafd0679e0faa7",
+  "responses_sha256": "0671604962297c07d75a944cef2b9c3a88f673c3b0b427be32b99f008ac0500f",
+  "output_sha256": "5db47510e885157a0e057ff17fda4e873266f7f44049c9c5aad9d29032e8779c",
+  "output": {
+    "answer": "86% auspol, 61% ausvotes, 52% budget2019, 50% ausvotes19, 47% ausvotes2019, 38% qanda, 37% iwd2019, 35% insiders, 32% 7news, 30% qt",
+    "evidence": [
+      {
+        "evidence_id": "chart",
+        "quote": "Australia 86% auspol 61 ausvotes 52 budget2019 50 ausvotes19 47 ausvotes2019 38 qanda 37 iwd2019 35 insiders 32 7news 30 qt",
+        "page_number": 1
+      }
+    ],
+    "confidence": 1.0,
+    "abstained": false,
+    "abstention_reason": null,
+    "tool_requests": []
+  },
+  "source_evidence_kind": "test_only",
+  "source_status": "pass"
+}

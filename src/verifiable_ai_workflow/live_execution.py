@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import fcntl
 import json
 import math
 import os
@@ -468,13 +467,15 @@ def atomic_write_json(path: str | Path, value: object) -> None:
 
 
 class RunFileLock:
-    """process 종료 시 자동 해제되는 advisory lock."""
+    """Unix live runner 전용이며 process 종료 시 자동 해제되는 잠금."""
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
         self._handle: IO[str] | None = None
 
     def __enter__(self) -> RunFileLock:
+        import fcntl
+
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._handle = self.path.open("a+", encoding="utf-8")
         try:
@@ -486,6 +487,8 @@ class RunFileLock:
         return self
 
     def __exit__(self, exc_type, exc, traceback) -> None:
+        import fcntl
+
         del exc_type, exc, traceback
         if self._handle is None:
             return

@@ -36,6 +36,7 @@ def build_course_provider(
     structured_output: Literal["json_schema", "prompt_only"] | None = None,
     request_output_token_ceiling: int | None = None,
     on_response: Callable[[dict[str, Any]], None] | None = None,
+    on_call_finished: Callable[[dict[str, Any]], None] | None = None,
     budget: LiveBudget | None = None,
 ) -> LiteLLMProvider:
     return LiteLLMProvider(
@@ -71,4 +72,5 @@ def build_course_provider(
         max_images_per_prompt=settings.provider.max_images_per_prompt,
         budget=budget,
         on_response_received=on_response,
+        on_call_finished=on_call_finished,
     )
